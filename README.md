@@ -34,7 +34,7 @@ MYTradeBook is a comprehensive trading journal application designed for forex tr
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/mytradebook.git
+   git clone https://github.com/najamaltaf88/MyTradeBook.git
    cd mytradebook
    ```
 
