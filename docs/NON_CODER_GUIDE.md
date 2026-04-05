@@ -317,6 +317,113 @@ You can ask Codex things like:
 - "Create better documentation for non-technical users"
 - "Find why trades are not syncing"
 
+## How To Use Codex For Development
+
+Even if you are not a developer, Codex can still help you build and improve this project.
+
+Think of Codex as a technical assistant that can read the repository, understand the files, make code changes, explain what changed, and help push improvements step by step.
+
+### What Codex can do for development
+
+You can ask Codex to:
+
+- add new pages or sections
+- improve the README and documentation
+- fix bugs
+- explain code in simple English
+- add GitHub-friendly docs and templates
+- help connect APIs
+- review why a feature is not working
+- update styles and UI text
+- prepare files for GitHub upload
+- check which files are safe to push publicly
+
+### Good development tasks for Codex
+
+If you want to improve MyTradeBook over time, Codex can help with tasks like:
+
+- "Add a better onboarding section to the landing page"
+- "Create a setup guide for beginner traders"
+- "Add a new README section for MT5 sync"
+- "Improve the dashboard wording"
+- "Help me add screenshots to the README"
+- "Create a new Markdown file explaining one feature"
+- "Find why this page is failing to load"
+- "Explain what this error means and fix it"
+- "Push my documentation changes to GitHub"
+
+### How non-coders should work with Codex
+
+The easiest way is:
+
+1. explain what you want in plain English
+2. mention the file if you know it
+3. ask Codex to make the change directly
+4. ask Codex to push the update to GitHub if needed
+
+Example:
+
+```text
+Add a new section to the README that explains MT5 sync for beginners and then push it to GitHub.
+```
+
+You do not need to describe the code implementation in technical detail. It is enough to describe the outcome you want.
+
+### How Codex helps when you are stuck
+
+If something is broken, you can ask Codex to:
+
+- inspect the repository
+- read the relevant files
+- explain the problem
+- fix the code
+- test basic changes
+- commit and push the update
+
+Example prompts:
+
+```text
+My login page is not working. Check the project and tell me what is wrong.
+```
+
+```text
+Trades are not syncing from MT5. Inspect the relevant files and fix the issue if possible.
+```
+
+```text
+Improve this documentation so non-technical users can understand it better.
+```
+
+### How Codex helps with GitHub work
+
+Codex can also help you manage the public repository by:
+
+- cleaning files before upload
+- avoiding secret files like `.env`
+- updating README and docs
+- adding issue templates
+- adding a license
+- preparing screenshots and markdown docs
+- committing and pushing safe public changes
+
+### Best way to get good results from Codex
+
+Be direct and outcome-focused.
+
+Good examples:
+
+- "Add this section"
+- "Fix this bug"
+- "Push these docs to GitHub"
+- "Explain this file simply"
+- "Make this guide better for beginners"
+
+Less helpful example:
+
+- "Do something with the project"
+
+The clearer your request is, the better Codex can help.
+
 ## Good Ways To Use Codex On This Project
 
 ### For setup help
