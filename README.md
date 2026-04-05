@@ -1,4 +1,4 @@
-# MyTradeBook
+# MYTradeBook
 
 MYTradeBook is a comprehensive trading journal application designed for forex traders. It provides tools for tracking trades, analyzing performance, managing risk, and gaining AI-powered insights to optimize trading strategies.
 
@@ -34,7 +34,7 @@ MYTradeBook is a comprehensive trading journal application designed for forex tr
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/najamaltaf88/MyTradeBook.git
+   git clone https://github.com/your-username/mytradebook.git
    cd mytradebook
    ```
 
