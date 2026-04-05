@@ -486,6 +486,94 @@ Use this order:
 
 If you can follow those steps, you can use MyTradeBook without needing to be a developer.
 
+## Quick Setup Walkthrough
+
+If this were explained like a short video, the setup flow would look like this:
+
+### Part 1: Install the basics
+
+1. Install Node.js
+2. Install Git
+3. Download or clone MyTradeBook
+4. Open the project folder
+5. Run `npm install`
+
+### Part 2: Connect the app to Supabase
+
+1. Create a Supabase project
+2. Copy your project URL, anon key, and service role key
+3. Paste them into `.env`
+4. Run the SQL in `script/supabase-schema.sql`
+5. Create the `tradebook-uploads` bucket
+6. Enable Email/Password authentication
+
+### Part 3: Launch MyTradeBook
+
+1. Run `npm run dev`
+2. Open `http://localhost:5000`
+3. Sign up for your account
+4. Open the Accounts page
+
+### Part 4: Connect MT5
+
+1. Create a trading account inside MyTradeBook
+2. Copy your generated API key
+3. Download `MyTradebook_EA.mq5`
+4. Install the EA in MT5
+5. Allow WebRequest for your MyTradeBook server URL
+6. Attach the EA to a chart
+7. Paste your API key and server URL into the EA settings
+
+### Part 5: Start journaling
+
+1. Let MT5 sync open and closed trades automatically
+2. Open the Trades page
+3. Add trade notes, screenshots, logic, and emotions
+4. Review Analytics, Reports, Risk, and Psychology pages weekly
+
+That is the simplest end-to-end workflow for a first-time user.
+
+## Suggested Screenshots For The GitHub Page
+
+If you want this repository to look more professional, add screenshots to the README later. The best screenshots to include are:
+
+1. Landing page
+2. Accounts page showing MT5 connection setup
+3. Trades journal page with synced trades
+4. Analytics dashboard
+5. Reports or psychology page
+6. EA setup dialog with API key and server URL instructions
+
+Recommended screenshot order for GitHub:
+
+1. Product overview or landing page
+2. MT5 account connection flow
+3. Trade journal view
+4. Analytics and reporting view
+
+You can save screenshots in a folder such as:
+
+`docs/screenshots/`
+
+Then embed them in the README like this:
+
+```md
+![Dashboard](docs/screenshots/dashboard.png)
+![Trades](docs/screenshots/trades.png)
+![Accounts](docs/screenshots/accounts.png)
+```
+
+## Recommended First Screenshots To Capture
+
+If you want the fastest improvement to the GitHub page, capture these first:
+
+- the landing page hero section
+- the Accounts page with the EA setup dialog open
+- the Trades page with journal notes and screenshots visible
+- the Analytics page with charts populated
+
+These four images alone are enough to make the repository easier to understand for new visitors.
+
 ## Supabase Setup
 
 If you want the full product experience for your own use, Supabase should be configured first.
