@@ -581,6 +581,40 @@ If you want the fastest improvement to the GitHub page, capture these first:
 
 These four images alone are enough to make the repository easier to understand for new visitors.
 
+## Screenshots
+
+### Dashboard
+
+![Dashboard](ScreenShots/Dashboard.png)
+
+### Accounts
+
+![Accounts](ScreenShots/Accounts.png)
+
+### Trade Journal
+
+![Trade Journal](ScreenShots/Trade%20Journal.png)
+
+### Analytics
+
+![Analytics](ScreenShots/analytics.png)
+
+### AI Insights
+
+![AI Insights](ScreenShots/AI%20Insights.png)
+
+### Goals
+
+![Goals](ScreenShots/Goals.png)
+
+### Psychology
+
+![Psychology](ScreenShots/Psychology.png)
+
+### Strategy Edge
+
+![Strategy Edge](ScreenShots/Strategy.png)
+
 ## Supabase Setup
 
 If you want the full product experience for your own use, Supabase should be configured first.
