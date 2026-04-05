@@ -4,6 +4,8 @@ MyTradeBook is a full-stack trading journal built for forex and multi-asset trad
 
 Instead of keeping screenshots, notes, spreadsheets, and strategy reviews in different places, MyTradeBook brings them into one workspace. You can use it to log trades, review analytics, monitor discipline, study performance patterns, and keep your trading process organized.
 
+The main workflow is built around MetaTrader 5. You connect your MT5 account to MyTradeBook through a lightweight Expert Advisor, the EA sends trade and account updates to the app, and the app turns that raw trading activity into a structured journal with analytics, screenshots, notes, psychology tracking, reports, and AI-assisted review.
+
 ## What This Project Does
 
 MyTradeBook helps traders:
@@ -18,6 +20,7 @@ MyTradeBook helps traders:
 ## Main Features
 
 - Trade journal with structured trade logging
+- MT5 Expert Advisor connection for automatic trade sync
 - Performance analytics and reporting
 - Risk tools and position planning
 - Goals, psychology, notes, and playbook pages
@@ -26,6 +29,93 @@ MyTradeBook helps traders:
 - PDF export support
 - Desktop packaging with Electron
 - Docker support for simple deployment
+
+## How The MT5 Connection Works
+
+MyTradeBook does not place trades on your behalf. Instead, it uses an MT5 Expert Advisor named `MyTradebook_EA.mq5` to read trade activity from your MetaTrader terminal and send it to the MyTradeBook server through a secure API key.
+
+The flow looks like this:
+
+1. You create an account inside the MyTradeBook Accounts page.
+2. MyTradeBook generates a unique API key for that account.
+3. You download the included EA file and install it in MetaTrader 5.
+4. You paste your MyTradeBook server URL and API key into the EA settings.
+5. While MT5 is running, the EA sends:
+   - open trade events
+   - closed trade events
+   - account balance and equity updates
+   - heartbeat updates showing the connection is alive
+6. MyTradeBook stores that data and updates the journal, dashboard, reports, and analytics pages.
+
+Important notes:
+
+- The EA is designed for trade data sync, not trade execution.
+- The app uses your account-specific API key to match incoming MT5 data to the correct journal account.
+- The app can mark accounts as live or offline based on recent sync activity.
+- The journal becomes more useful over time because synced trades can then be enriched with notes, screenshots, emotions, logic, and post-trade review.
+
+## How Trade Sync Works
+
+When the EA is attached to a chart in MT5 and MT5 remains open, MyTradeBook can automatically keep the journal updated.
+
+### Real-time sync
+
+- When a trade opens, the EA sends a `TRADE_OPEN` event.
+- When a trade closes, the EA sends a `TRADE_CLOSE` event.
+- The server updates or creates the matching trade record in the journal.
+- Account balance, equity, leverage, and connection status can also be updated automatically.
+
+### First-time history import
+
+On the first run, the EA can also import historical trades from MT5 history.
+
+- `HistoryDaysBack = 0` means sync the full available history that MT5 can access
+- `HistoryDaysBack > 0` means sync only the last N days on first sync
+
+This is useful if you want to:
+
+- backfill past trades into the journal
+- start small with only recent trades
+- migrate from a manual journal to an automatic one
+
+### What gets synced
+
+The MT5 sync can send:
+
+- ticket or position id
+- symbol
+- buy or sell direction
+- open time and close time
+- open and close price
+- volume
+- profit
+- commission
+- swap
+- stop loss and take profit
+- account balance and equity
+- optional MT5 comments
+
+## How The Journal Works After Sync
+
+Trade sync is only the first step. After a trade appears in MyTradeBook, you can use the app to turn that raw trade into a real journal entry.
+
+For each synced trade, you can add or review:
+
+- trade reason
+- execution logic
+- emotional state
+- screenshots
+- supporting notes
+- tags and setup context
+
+This means MyTradeBook is not just a sync dashboard. It is a review workflow:
+
+1. MT5 sends the trade automatically.
+2. The trade appears in the journal.
+3. You add context around why you took it and how you managed it.
+4. The app uses those records in reports, psychology review, strategy analysis, and AI coaching.
+
+That is the core value of the project: automatic capture plus structured reflection.
 
 ## Tech Stack
 
@@ -94,6 +184,307 @@ Optional values:
 - `SUPABASE_STORAGE_BUCKET` if you want a custom storage bucket name
 - `SUPABASE_STATE_TABLE` and `SUPABASE_STATE_KEY` if you want custom app state storage names
 - `CRYPTO_SALT` for stronger encryption-related customization
+
+## MT5 Setup Guide
+
+After the app is running, use this process to connect MetaTrader 5.
+
+### 1. Create a trading account inside MyTradeBook
+
+Go to the Accounts page and create a new account record. This gives you:
+
+- an account entry inside the app
+- a generated API key
+- access to the MT5 EA download and setup instructions
+
+### 2. Download the Expert Advisor
+
+The EA file included in this repository is:
+
+`public/MyTradebook_EA.mq5`
+
+You can also download it from the app through the Accounts page.
+
+### 3. Install the EA in MetaTrader 5
+
+1. Open MT5.
+2. Go to `File > Open Data Folder`.
+3. Open `MQL5 > Experts`.
+4. Copy `MyTradebook_EA.mq5` into that folder.
+5. Restart MT5 or refresh the Navigator panel.
+
+### 4. Allow WebRequest in MT5
+
+Inside MT5:
+
+1. Go to `Tools > Options > Expert Advisors`.
+2. Enable `Allow WebRequest for listed URL`.
+3. Add your MyTradeBook server URL, for example:
+
+`http://127.0.0.1:5000`
+
+If you run the app on another machine or domain, use that URL instead.
+
+### 5. Attach the EA to a chart
+
+1. In the MT5 Navigator panel, find `MyTradebook_EA`.
+2. Drag it onto any chart.
+3. Enter:
+   - your MyTradeBook API key
+   - your MyTradeBook server URL
+4. Click OK.
+
+### 6. Keep MT5 running for live sync
+
+As long as MT5 stays open and the EA remains attached, new trades and account updates can continue syncing to MyTradeBook automatically.
+
+## What Users Can Expect In Practice
+
+If someone uses this project for their own trading journal, the practical daily experience is usually:
+
+1. Open MT5 and keep the EA attached.
+2. Take trades normally in MetaTrader 5.
+3. Let MyTradeBook import open and closed trades automatically.
+4. Open the Trades page and add your journal notes, screenshots, logic, and emotions.
+5. Review the Dashboard, Analytics, Reports, Risk, and Psychology sections at the end of the session or week.
+
+This makes the app useful for both:
+
+- traders who want automatic trade capture
+- traders who want deeper manual reflection after sync
+
+## Beginner-Friendly Installation Guide For Non-Coders
+
+This section is for users who do not write code but still want to install and use MyTradeBook on their own computer.
+
+You do not need to understand the codebase. You only need to follow the steps carefully, copy a few commands, and fill in the required API values.
+
+### What you need before starting
+
+Please install these tools first:
+
+1. `Node.js` version 18 or newer
+2. `Git`
+3. A code editor such as `Visual Studio Code`
+4. A `Supabase` account
+5. MetaTrader 5 if you want automatic MT5 trade sync
+
+Recommended downloads:
+
+- Node.js: https://nodejs.org/
+- Git: https://git-scm.com/downloads
+- Visual Studio Code: https://code.visualstudio.com/
+- Supabase: https://supabase.com/
+- MetaTrader 5: from your broker or MetaQuotes
+
+### Option 1: Download the project as ZIP
+
+If you do not want to use Git commands:
+
+1. Open the GitHub repository page.
+2. Click `Code`.
+3. Click `Download ZIP`.
+4. Extract the ZIP to a folder such as `C:\MyTradeBook`.
+
+### Option 2: Clone the project with Git
+
+If Git is installed, open PowerShell and run:
+
+```powershell
+git clone https://github.com/najamaltaf88/MyTradeBook.git
+cd MyTradeBook
+```
+
+### Open the project folder
+
+Open the extracted or cloned folder in Visual Studio Code.
+
+If you want, you can also stay in PowerShell and run commands from the project folder.
+
+### Install project dependencies
+
+Inside the project folder, run:
+
+```powershell
+npm install
+```
+
+This downloads all required packages for the app.
+
+### Create your `.env` file
+
+Copy `.env.example` to `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The `.env` file is where you place your project keys and configuration values.
+
+### Which APIs and keys are required
+
+For most users, only Supabase is required.
+
+#### Required
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+These are needed for:
+
+- login and sign up
+- account sessions
+- cloud-backed storage
+- file uploads when Supabase storage is enabled
+
+#### Optional
+
+- `TWELVE_DATA_API_KEY`
+  Use this if you want deeper intraday market data support when Yahoo data is not enough.
+
+- `GROK_API_KEY`
+  Use this if you want AI-powered coaching, summaries, and analysis features.
+
+- `CMC_API_KEY`
+  Use this if you want CoinMarketCap crypto listings and crypto-related features.
+
+- `METAAPI_TOKEN`
+  This is only needed if you plan to use MetaApi-specific integration paths.
+
+- `CRYPTO_SALT`
+  Recommended for stronger custom encryption-related behavior.
+
+### How to set up Supabase step by step
+
+If you are a non-coder, follow these exact steps:
+
+1. Create a new project in Supabase.
+2. Wait for the project to finish provisioning.
+3. Open your project dashboard.
+4. Copy:
+   - Project URL
+   - Anon key
+   - Service role key
+5. Paste them into your `.env` file.
+
+Example:
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Set up the database table in Supabase
+
+Open the Supabase SQL Editor and run the SQL from:
+
+`script/supabase-schema.sql`
+
+This creates the `app_state` table used by the app.
+
+### Create the storage bucket
+
+In Supabase Storage:
+
+1. Create a new bucket
+2. Name it `tradebook-uploads`
+3. Make it public if you want uploaded files and screenshots to be accessible by the app
+
+If you use another bucket name, change `SUPABASE_STORAGE_BUCKET` in `.env`.
+
+### Enable login in Supabase
+
+In Supabase Auth:
+
+1. Enable Email/Password sign-in
+2. Save your settings
+
+This is required for user signup, login, and password recovery inside MyTradeBook.
+
+### Start the app
+
+Run:
+
+```powershell
+npm run dev
+```
+
+Then open:
+
+`http://localhost:5000`
+
+### What to do after the app starts
+
+1. Create your user account in the app
+2. Open the Accounts page
+3. Add your MT5 trading account
+4. Download the EA
+5. Install it in MT5
+6. Paste your API key and server URL into the EA
+7. Keep MT5 open for automatic sync
+
+### Simple API guide in plain English
+
+Here is what each important key does:
+
+- `SUPABASE_URL`
+  The web address of your Supabase project.
+
+- `SUPABASE_ANON_KEY`
+  A public app key used by the frontend for login and client access.
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+  A powerful private server key. Never expose this publicly.
+
+- `VITE_SUPABASE_URL`
+  The same Supabase URL, but specifically exposed to the frontend build.
+
+- `VITE_SUPABASE_ANON_KEY`
+  The same anon key, but specifically exposed to the frontend build.
+
+- `TWELVE_DATA_API_KEY`
+  Optional market data provider key.
+
+- `GROK_API_KEY`
+  Optional AI provider key for advanced coaching and suggestions.
+
+- `CMC_API_KEY`
+  Optional crypto data provider key.
+
+### Common beginner mistakes
+
+- Forgetting to create `.env`
+- Pasting the wrong Supabase key into the wrong variable
+- Forgetting to run the SQL schema
+- Forgetting to create the storage bucket
+- Not enabling Email/Password authentication
+- Not allowing WebRequest in MT5
+- Closing MT5 and expecting live trade sync to continue
+
+### If you want the easiest possible setup
+
+Use this order:
+
+1. Install Node.js
+2. Install Git
+3. Download or clone the repository
+4. Run `npm install`
+5. Copy `.env.example` to `.env`
+6. Set up Supabase and paste the required keys
+7. Run the SQL schema
+8. Create the storage bucket
+9. Run `npm run dev`
+10. Open the app in your browser
+11. Create your account
+12. Connect MT5 through the EA
+
+If you can follow those steps, you can use MyTradeBook without needing to be a developer.
 
 ## Supabase Setup
 
