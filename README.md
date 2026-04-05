@@ -30,6 +30,13 @@ MyTradeBook helps traders:
 - Desktop packaging with Electron
 - Docker support for simple deployment
 
+## Documentation
+
+For more detailed guides, see:
+
+- `docs/NON_CODER_GUIDE.md` for a full beginner-friendly installation and usage guide
+- `docs/FEATURES_A_TO_Z.md` for a complete feature-by-feature overview of the project
+
 ## How The MT5 Connection Works
 
 MyTradeBook does not place trades on your behalf. Instead, it uses an MT5 Expert Advisor named `MyTradebook_EA.mq5` to read trade activity from your MetaTrader terminal and send it to the MyTradeBook server through a secure API key.
