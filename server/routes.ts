@@ -178,6 +178,29 @@ function isRemoteUrl(value: unknown): value is string {
   return typeof value === "string" && /^https?:\/\//i.test(value);
 }
 
+function resolveUploadsDir(): string {
+  const configured = typeof process.env.LOCAL_UPLOADS_DIR === "string"
+    ? process.env.LOCAL_UPLOADS_DIR.trim()
+    : "";
+  if (configured) {
+    const resolved = path.isAbsolute(configured)
+      ? configured
+      : path.resolve(process.cwd(), configured);
+    fs.mkdirSync(resolved, { recursive: true });
+    return resolved;
+  }
+
+  const dataDir = typeof process.env.LOCAL_DATA_DIR === "string"
+    ? process.env.LOCAL_DATA_DIR.trim()
+    : "";
+  const fallbackBase = dataDir
+    ? (path.isAbsolute(dataDir) ? dataDir : path.resolve(process.cwd(), dataDir))
+    : process.cwd();
+  const resolved = path.join(fallbackBase, "uploads");
+  fs.mkdirSync(resolved, { recursive: true });
+  return resolved;
+}
+
 function resolveScreenshotPath(value: unknown): string | null {
   if (isRemoteUrl(value)) return null;
   const filename = extractScreenshotFilename(value);
@@ -450,8 +473,7 @@ async function verifyGoalOwnership(goalId: string, userId: string): Promise<bool
   return !!goal && goal.userId === userId;
 }
 
-const uploadsDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = resolveUploadsDir();
 
 const CMC_CACHE_TTL_MS = 60 * 1000;
 const MAX_CMC_CACHE_SIZE = Number(process.env.CMC_CACHE_MAX || 1000);
@@ -1460,7 +1482,14 @@ export async function registerRoutes(
     }
   });
 
-  app.use("/uploads", (await import("express")).default.static(uploadsDir));
+  app.use(
+    "/uploads",
+    (await import("express")).default.static(uploadsDir, {
+      etag: true,
+      immutable: true,
+      maxAge: "30d",
+    }),
+  );
 
   const publicDir = path.join(process.cwd(), "public");
   if (fs.existsSync(publicDir)) {

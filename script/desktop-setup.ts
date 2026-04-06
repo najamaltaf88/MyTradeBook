@@ -5,6 +5,7 @@ const rootDir = process.cwd();
 const envPath = path.join(rootDir, ".env");
 const envExamplePath = path.join(rootDir, ".env.example");
 const defaultDataDir = path.join(rootDir, ".mytradebook-data");
+const defaultUploadsDir = path.join(defaultDataDir, "uploads");
 
 function ensureEnvFile() {
   if (!fs.existsSync(envPath)) {
@@ -14,6 +15,7 @@ function ensureEnvFile() {
     } else {
       envContent = [
         "LOCAL_DATA_DIR=.mytradebook-data",
+        "LOCAL_UPLOADS_DIR=.mytradebook-data/uploads",
         "PORT=5000",
         "",
       ].join("\n");
@@ -33,6 +35,11 @@ function ensureEnvFile() {
 
   if (!/LOCAL_DATA_DIR=/m.test(envContent)) {
     envContent = `LOCAL_DATA_DIR=.mytradebook-data\n${envContent}`;
+    changed = true;
+  }
+
+  if (!/LOCAL_UPLOADS_DIR=/m.test(envContent)) {
+    envContent = `LOCAL_UPLOADS_DIR=.mytradebook-data/uploads\n${envContent}`;
     changed = true;
   }
 
@@ -59,13 +66,33 @@ function resolveLocalDataDirFromEnv(): string {
   return path.isAbsolute(rawValue) ? rawValue : path.resolve(rootDir, rawValue);
 }
 
+function resolveLocalUploadsDirFromEnv(): string {
+  const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  const rawValue = envContent
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("LOCAL_UPLOADS_DIR="))
+    ?.split("=")
+    .slice(1)
+    .join("=")
+    .trim();
+
+  if (!rawValue) {
+    return defaultUploadsDir;
+  }
+
+  return path.isAbsolute(rawValue) ? rawValue : path.resolve(rootDir, rawValue);
+}
+
 function main() {
   ensureEnvFile();
 
   const dataDir = resolveLocalDataDirFromEnv();
+  const uploadsDir = resolveLocalUploadsDirFromEnv();
   fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(uploadsDir, { recursive: true });
 
   console.log(`Desktop setup complete. Local data directory: ${dataDir}`);
+  console.log(`Desktop setup complete. Local uploads directory: ${uploadsDir}`);
 }
 
 try {

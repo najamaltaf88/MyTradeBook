@@ -114,7 +114,7 @@ type Dataset = {
 const MODEL_FALLBACK = "algorithmic-v1";
 const GROK_ENDPOINT = process.env.GROK_API_URL || "https://api.x.ai/v1/chat/completions";
 const GROK_MODEL = process.env.GROK_MODEL || "grok-2-latest";
-const GROK_TIMEOUT_MS = 5000;
+const GROK_TIMEOUT_MS = 15000;
 const CACHE_LOOKUP_LIMIT = 40;
 
 const AIJsonSchema = z.object({
@@ -227,6 +227,38 @@ function normalizeContent(content: unknown): string {
     }
   }
   return chunks.join("\n").trim();
+}
+
+function formatPromptNumber(value: number | null, digits = 2): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "n/a";
+  return round(value, digits).toString();
+}
+
+function formatPromptFlag(value: boolean | null): string {
+  if (value === null) return "none";
+  return value ? "✓" : "✗";
+}
+
+function formatPromptResult(pnl: number): "WIN" | "LOSS" | "BE" {
+  if (pnl > 0) return "WIN";
+  if (pnl < 0) return "LOSS";
+  return "BE";
+}
+
+function formatTradePromptLine(trade: NormalizedTrade, index: number): string {
+  return [
+    `T${index + 1}: ${trade.symbol}`,
+    `status ${trade.is_closed ? "closed" : "open"}`,
+    `result ${formatPromptResult(trade.pnl)}`,
+    `lot ${formatPromptNumber(trade.lot_size, 2)}`,
+    `RR ${formatPromptNumber(trade.rr_ratio, 2)}`,
+    `SL ${formatPromptFlag(trade.discipline_scores.sl_respected)}`,
+    `TP ${formatPromptFlag(trade.discipline_scores.tp_respected)}`,
+    `strategy ${trade.strategy_tag || "none"}`,
+    `emotion ${trade.emotion_tag || "none"}`,
+    `duration ${formatPromptNumber(trade.trade_duration_minutes, 1)}m`,
+    `revenge ${trade.discipline_scores.revenge_trade ? "FLAG" : "clear"}`,
+  ].join(" | ");
 }
 
 function extractJson(content: string): string {
@@ -447,6 +479,7 @@ export class AIAnalysisService {
     };
 
     const closed = dataset.trades.filter((trade) => trade.is_closed);
+    const last20Closed = closed.slice(-20);
     const bestStrategy = dataset.strategy_performance.by_strategy
       .filter((item) => item.trades >= 3)
       .sort((a, b) => b.pnl - a.pnl)[0];
@@ -612,6 +645,43 @@ export class AIAnalysisService {
       addRecommendation("This is improving, but do not rush size. Let the same quality hold for another 20 closed trades before calling it proven.");
     }
 
+    const emotionalLosses = last20Closed.filter((trade) => trade.pnl < 0 && trade.emotion_tag);
+    if (emotionalLosses.length >= 2) {
+      const emotions = dedupe(
+        emotionalLosses
+          .map((trade) => trade.emotion_tag || "")
+          .filter(Boolean),
+      );
+      addInsight(
+        "psychology",
+        `In the last 20 closed trades, ${emotionalLosses.length} losing trades were tagged with emotion: ${emotions.join(", ")}. That suggests emotional state is showing up directly in the losses.`,
+      );
+      addRecommendation("If you notice an emotional state before entry, pause the trade and complete a reset before placing any order.");
+    }
+
+    const noSlClosedTrades = closed.filter(
+      (trade) => trade.is_closed && trade.discipline_scores.sl_respected === null,
+    );
+    if (noSlClosedTrades.length > 0) {
+      addInsight(
+        "trading_discipline",
+        `${noSlClosedTrades.length} closed trades had no measurable stop-loss protection set. That removes one of the core discipline controls in the journal.`,
+      );
+      addRecommendation("Make a hard rule that every trade must have a stop loss defined before entry, with no exceptions.");
+    }
+
+    const weakStrategies = dataset.strategy_performance.by_strategy
+      .filter((item) => item.trades >= 2 && item.winRate < 35 && item.pnl < 0)
+      .sort((a, b) => a.pnl - b.pnl)
+      .slice(0, 2);
+    for (const strategy of weakStrategies) {
+      addInsight(
+        "strategy_performance",
+        `${strategy.key} is currently a weak setup: ${strategy.trades} trades, ${strategy.winRate.toFixed(1)}% win rate, ${strategy.pnl.toFixed(2)} PnL.`,
+      );
+      addRecommendation(`Stop trading ${strategy.key} for now until you can define a better entry trigger for that setup.`);
+    }
+
     for (const improvement of dataset.portfolio.topImprovements.slice(0, 2)) {
       addRecommendation(improvement);
     }
@@ -720,27 +790,35 @@ export class AIAnalysisService {
   }
 
   private buildPrompt(dataset: Dataset): string {
-    const payload = {
+    const aggregatePayload = {
       summary: dataset.summary,
       discipline_scores: dataset.discipline_scores,
       psychology_patterns: dataset.psychology_patterns,
       risk_stability_scores: dataset.risk_stability_scores,
       strategy_performance: dataset.strategy_performance,
       backtests: dataset.backtests,
-      recent_trades: dataset.trades.slice(-120),
     };
+    const recentTrades = dataset.trades.slice(-20);
+    const recentTradeBreakdown = recentTrades.length
+      ? recentTrades.map((trade, index) => formatTradePromptLine(trade, index)).join("\n")
+      : "No recent trades available.";
 
     return [
       "Analyze this trading data and provide advanced personalized coaching suggestions.",
       "Focus on discipline, risk management, psychology, and strategy performance.",
-      "Use the numbers in the payload as evidence. Avoid generic filler and avoid praise that is not earned by the data.",
+      "Use the aggregate stats JSON and the recent trade breakdown as evidence.",
+      "Reference specific trade numbers like T3 or T14 whenever you spot a pattern in the recent trades.",
+      "Avoid generic advice, avoid filler, and only comment on what the actual data shows.",
       "Be explicit about uncertainty when the sample is small or inconclusive.",
       "Each insight should explain what is happening, how confident you are, and why it matters.",
       "Recommendations should be actionable, concrete, and written like a coach preparing the next trading session or review drill.",
       "Include a mix of protect-capital advice and exploit-edge advice when the data supports it.",
       "Return strict JSON only in this shape:",
       "{\"insights\":[{\"type\":\"trading_discipline|risk_management|psychology|strategy_performance\",\"message\":\"...\"}],\"recommendations\":[\"...\"]}",
-      JSON.stringify(payload),
+      "Aggregate stats JSON:",
+      JSON.stringify(aggregatePayload),
+      `Recent trade breakdown (${recentTrades.length} trades):`,
+      recentTradeBreakdown,
     ].join("\n");
   }
 

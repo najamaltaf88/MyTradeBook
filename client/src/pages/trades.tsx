@@ -1,4 +1,4 @@
-import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Component, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -850,6 +850,7 @@ function TradesPageInner() {
   const { selectedAccountId, queryParam } = useAccount();
   const { timezone } = useTimezone();
   const { style } = useAnalysisStyle();
+  const deferredSearch = useDeferredValue(search);
 
   const { data: trades, isLoading, isError } = useQuery<Trade[]>({
     queryKey: ["/api/trades", selectedAccountId],
@@ -860,40 +861,49 @@ function TradesPageInner() {
     },
   });
 
-  const { data: aiAnalyses = [] } = useQuery<TradeAiAnalysis[]>({
-    queryKey: ["/api/ai/trades", selectedAccountId || "__all__", style],
-    queryFn: async () => {
-      const styleParam = `style=${encodeURIComponent(style)}`;
-      const url = queryParam
-        ? `/api/ai/trades${queryParam}&${styleParam}`
-        : `/api/ai/trades?${styleParam}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to fetch AI trade analysis");
-      return res.json();
-    },
-  });
+  const searchTerm = deferredSearch.trim().toLowerCase();
 
-  const aiMap = useMemo(() => {
-    return new Map(aiAnalyses.map((a) => [a.tradeId, a]));
-  }, [aiAnalyses]);
+  const filtered = useMemo(() => {
+    return (trades || []).filter((t) => {
+      if (searchTerm && !t.symbol.toLowerCase().includes(searchTerm)) return false;
+      if (typeFilter !== "all" && t.type !== typeFilter) return false;
+      if (statusFilter === "open" && t.isClosed) return false;
+      if (statusFilter === "closed" && !t.isClosed) return false;
+      return true;
+    });
+  }, [trades, searchTerm, typeFilter, statusFilter]);
 
-  const filtered = (trades || []).filter((t) => {
-    if (search && !t.symbol.toLowerCase().includes(search.toLowerCase())) return false;
-    if (typeFilter !== "all" && t.type !== typeFilter) return false;
-    if (statusFilter === "open" && t.isClosed) return false;
-    if (statusFilter === "closed" && !t.isClosed) return false;
-    return true;
-  });
+  const summary = useMemo(() => {
+    const wins = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) > 0).length;
+    const losses = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) < 0).length;
+    const totalPnl = filtered.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
+    const journaledCount = filtered.filter((trade) => trade.reason || trade.logic || trade.emotion || trade.screenshotUrl).length;
+    const aiCoveredCount = filtered.filter((trade) => Boolean(normalizeTradeGrade(trade.aiGrade))).length;
+    const averageNet = filtered.length > 0 ? totalPnl / filtered.length : 0;
+    const journalCompletion = filtered.length > 0 ? Math.round((journaledCount / filtered.length) * 100) : 0;
 
-  const wins = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) > 0).length;
-  const losses = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) < 0).length;
-  const totalPnl = filtered.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
-  const journaledCount = filtered.filter((trade) => trade.reason || trade.logic || trade.emotion || trade.screenshotUrl).length;
-  const aiCoveredCount = filtered.filter((trade) => aiMap.has(trade.id) || normalizeTradeGrade(trade.aiGrade)).length;
-  const averageNet = filtered.length > 0 ? totalPnl / filtered.length : 0;
-  const journalCompletion = filtered.length > 0 ? Math.round((journaledCount / filtered.length) * 100) : 0;
+    return {
+      wins,
+      losses,
+      totalPnl,
+      journaledCount,
+      aiCoveredCount,
+      averageNet,
+      journalCompletion,
+    };
+  }, [filtered]);
 
-  const visibleTrades = filtered.slice(0, visibleCount);
+  const visibleTrades = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  const {
+    wins,
+    losses,
+    totalPnl,
+    journaledCount,
+    aiCoveredCount,
+    averageNet,
+    journalCompletion,
+  } = summary;
 
   if (isLoading) {
     return (
@@ -1051,7 +1061,6 @@ function TradesPageInner() {
               <tbody>
                 {visibleTrades.map((trade) => {
                   const tradeNet = getTradeNetPnl(trade);
-                  const ai = aiMap.get(trade.id);
                   const pips = resolveTradePips(trade);
                   const cachedGrade = normalizeTradeGrade(trade.aiGrade);
 
@@ -1117,11 +1126,7 @@ function TradesPageInner() {
                       </td>
                       <td className="p-3 hidden lg:table-cell">
                         <div className="flex justify-center">
-                          {ai ? (
-                            <Badge className={cn("text-[10px] border", gradeClass(ai.grade))}>
-                              {ai.grade}
-                            </Badge>
-                          ) : cachedGrade ? (
+                          {cachedGrade ? (
                             <Badge className={cn("text-[10px] border", gradeClass(cachedGrade))}>
                               {cachedGrade}
                             </Badge>

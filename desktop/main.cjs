@@ -13,10 +13,12 @@ function loadRuntimeEnv() {
   const exeDirEnv = path.join(path.dirname(process.execPath), ".env");
   const cwdEnv = path.join(process.cwd(), ".env");
   const localDataDir = path.join(app.getPath("userData"), "data");
+  const localUploadsDir = path.join(app.getPath("userData"), "uploads");
 
   if (!fs.existsSync(userDataEnv)) {
     const content = [
       `LOCAL_DATA_DIR=${localDataDir.replace(/\\/g, "/")}`,
+      `LOCAL_UPLOADS_DIR=${localUploadsDir.replace(/\\/g, "/")}`,
       "PORT=5000",
       "",
     ].join("\n");
@@ -29,6 +31,44 @@ function loadRuntimeEnv() {
       dotenv.config({ path: envFile, override: false });
     }
   });
+}
+
+function migrateLegacyUploads(targetDir) {
+  if (!app.isPackaged) return;
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const candidates = [
+    path.join(path.dirname(process.execPath), "uploads"),
+    path.join(process.resourcesPath || "", "uploads"),
+    path.join(process.cwd(), "uploads"),
+  ]
+    .filter(Boolean)
+    .filter((dir, index, list) => list.indexOf(dir) === index)
+    .filter((dir) => path.resolve(dir) !== path.resolve(targetDir));
+
+  for (const sourceDir of candidates) {
+    if (!fs.existsSync(sourceDir)) continue;
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
+      if (fs.existsSync(targetPath)) continue;
+      try {
+        fs.copyFileSync(sourcePath, targetPath);
+      } catch {
+        // Best effort migration for legacy screenshots.
+      }
+    }
+  }
 }
 
 function waitForServer(port, timeoutMs = 45000) {
@@ -112,12 +152,16 @@ async function startBackend() {
   const requestedPort = Number.isFinite(configuredPort) ? configuredPort : 5000;
   const port = await resolveBackendPort(requestedPort);
   const fallbackDataDir = path.join(app.getPath("userData"), "data");
+  const fallbackUploadsDir = path.join(app.getPath("userData"), "uploads");
 
   process.env.PORT = String(port);
   process.env.NODE_ENV = "production";
   process.env.LOCAL_DATA_DIR = process.env.LOCAL_DATA_DIR || fallbackDataDir;
+  process.env.LOCAL_UPLOADS_DIR = process.env.LOCAL_UPLOADS_DIR || fallbackUploadsDir;
   process.env.FORCE_INSECURE_COOKIE = "true";
   fs.mkdirSync(process.env.LOCAL_DATA_DIR, { recursive: true });
+  fs.mkdirSync(process.env.LOCAL_UPLOADS_DIR, { recursive: true });
+  migrateLegacyUploads(process.env.LOCAL_UPLOADS_DIR);
 
   try {
     process.chdir(app.getAppPath());

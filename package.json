@@ -120,13 +120,9 @@
       "dist/**/*",
       "desktop/**/*",
       "public/**/*",
-      "uploads/**/*",
       "package.json"
     ],
     "asar": true,
-    "asarUnpack": [
-      "uploads/**"
-    ],
     "win": {
       "target": [
         {
