@@ -1,4 +1,4 @@
-import { Component, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Component, memo, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +118,69 @@ type TradeAiAnalysis = {
   };
 };
 
+type TradesQueryResponse = {
+  data: Trade[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+function isTradeRecord(value: unknown): value is Trade {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "id" in value &&
+    "accountId" in value &&
+    "symbol" in value,
+  );
+}
+
+function patchTradesQueryData(
+  existing: Trade[] | TradesQueryResponse | undefined,
+  updater: (trade: Trade) => Trade,
+) {
+  if (!existing) return existing;
+
+  if (Array.isArray(existing)) {
+    if (existing.length > 0 && !isTradeRecord(existing[0])) return existing;
+    return existing.map((trade) => updater(trade));
+  }
+
+  if (existing.data.length > 0 && !isTradeRecord(existing.data[0])) {
+    return existing;
+  }
+
+  return {
+    ...existing,
+    data: existing.data.map((trade) => updater(trade)),
+  };
+}
+
+function syncTradeCaches(updatedTrade: Trade) {
+  queryClient.setQueryData<Trade>(["/api/trades", updatedTrade.id], updatedTrade);
+  queryClient.setQueriesData<Trade[] | TradesQueryResponse>(
+    { queryKey: ["/api/trades"] },
+    (existing) =>
+      patchTradesQueryData(existing, (trade) =>
+        trade.id === updatedTrade.id ? updatedTrade : trade,
+      ),
+  );
+}
+
+function patchTradeCaches(tradeId: string, updater: (trade: Trade) => Trade) {
+  queryClient.setQueryData<Trade>(["/api/trades", tradeId], (existing) =>
+    existing ? updater(existing) : existing,
+  );
+  queryClient.setQueriesData<Trade[] | TradesQueryResponse>(
+    { queryKey: ["/api/trades"] },
+    (existing) =>
+      patchTradesQueryData(existing, (trade) =>
+        trade.id === tradeId ? updater(trade) : trade,
+      ),
+  );
+}
+
 function resolveTradePips(
   trade: Pick<Trade, "symbol" | "type" | "openPrice" | "closePrice" | "isClosed" | "pips">,
 ) {
@@ -181,6 +244,112 @@ function TradeMetricBox({ label, value, color }: { label: string; value: string;
     </div>
   );
 }
+
+const TradeTableRow = memo(function TradeTableRow({
+  trade,
+  timezone,
+  onSelect,
+}: {
+  trade: Trade;
+  timezone: string;
+  onSelect: (trade: Trade) => void;
+}) {
+  const tradeNet = getTradeNetPnl(trade);
+  const pips = resolveTradePips(trade);
+  const cachedGrade = normalizeTradeGrade(trade.aiGrade);
+  const hasJournal = trade.reason || trade.logic || trade.emotion || trade.screenshotUrl;
+  const emotionOpt = EMOTION_OPTIONS.find((emotion) => emotion.value === trade.emotion);
+
+  return (
+    <tr
+      className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
+      onClick={() => onSelect(trade)}
+      data-testid={`row-trade-${trade.id}`}
+    >
+      <td className="p-3">
+        <div className="flex items-center gap-2">
+          <div
+            className={cn(
+              "w-6 h-6 rounded flex items-center justify-center shrink-0",
+              trade.type === "BUY" ? "bg-emerald-500/10" : "bg-red-500/10",
+            )}
+          >
+            {trade.type === "BUY" ? (
+              <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+            ) : (
+              <ArrowDownRight className="w-3 h-3 text-red-500" />
+            )}
+          </div>
+          <span className="text-sm font-medium font-mono">{trade.symbol}</span>
+        </div>
+      </td>
+      <td className="p-3">
+        <Badge
+          variant={trade.type === "BUY" ? "default" : "secondary"}
+          className="text-[10px]"
+        >
+          {trade.type}
+        </Badge>
+      </td>
+      <td className="p-3 text-sm text-muted-foreground hidden sm:table-cell">
+        {formatDate(trade.openTime, timezone)}
+      </td>
+      <td className="p-3 text-sm text-muted-foreground hidden md:table-cell">
+        {trade.isClosed ? formatDate(trade.closeTime, timezone) : "-"}
+      </td>
+      <td className="p-3 text-sm text-right font-mono hidden sm:table-cell">
+        {trade.volume}
+      </td>
+      <td className="p-3 text-sm text-right font-mono hidden lg:table-cell">
+        {pips !== null && pips !== undefined ? (
+          <span className={getProfitColor(pips)}>
+            {pips >= 0 ? "+" : ""}{pips}
+          </span>
+        ) : "-"}
+      </td>
+      <td className="p-3 text-sm text-right text-muted-foreground hidden lg:table-cell">
+        <div className="flex items-center justify-end gap-1">
+          <Clock className="w-3 h-3" />
+          {formatDuration(trade.duration)}
+        </div>
+      </td>
+      <td className="p-3 text-right">
+        <span className={cn("text-sm font-mono font-medium", getProfitColor(tradeNet))}>
+          {tradeNet >= 0 ? "+" : ""}{formatCurrency(tradeNet)}
+        </span>
+      </td>
+      <td className="p-3 hidden lg:table-cell">
+        <div className="flex justify-center">
+          {cachedGrade ? (
+            <Badge className={cn("text-[10px] border", gradeClass(cachedGrade))}>
+              {cachedGrade}
+            </Badge>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">-</span>
+          )}
+        </div>
+      </td>
+      <td className="p-3 hidden md:table-cell">
+        <div className="flex items-center justify-center gap-1">
+          {trade.screenshotUrl && <Image className="w-3 h-3 text-blue-500" />}
+          {trade.reason && <Brain className="w-3 h-3 text-purple-500" />}
+          {trade.logic && <Lightbulb className="w-3 h-3 text-amber-500" />}
+          {emotionOpt && (
+            <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full", emotionOpt.color)}>
+              {emotionOpt.label}
+            </span>
+          )}
+          {!hasJournal && <span className="text-[10px] text-muted-foreground">-</span>}
+        </div>
+      </td>
+      <td className="p-3 text-right hidden md:table-cell">
+        <Badge variant={trade.isClosed ? "outline" : "default"} className="text-[10px]">
+          {trade.isClosed ? "Closed" : "Open"}
+        </Badge>
+      </td>
+    </tr>
+  );
+});
 
 function TradeDetailDialog({
   trade,
@@ -288,8 +457,7 @@ function TradeDetailDialog({
       return response.json() as Promise<Trade>;
     },
     onSuccess: (updatedTrade) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trades", trade?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      syncTradeCaches(updatedTrade);
       setReasonText(updatedTrade.reason ?? "");
       setLogicText(updatedTrade.logic ?? "");
       setEditingReason(false);
@@ -315,11 +483,15 @@ function TradeDetailDialog({
         credentials: "include",
       });
       if (!res.ok) throw new Error("Upload failed");
-      return res.json();
+      return res.json() as Promise<{ url: string }>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trades", trade?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+    onSuccess: ({ url }) => {
+      if (trade?.id) {
+        patchTradeCaches(trade.id, (currentTrade) => ({
+          ...currentTrade,
+          screenshotUrl: url,
+        }));
+      }
       setScreenshotMissing(false);
     },
     onError: (err: Error) => {
@@ -332,8 +504,12 @@ function TradeDetailDialog({
       await apiRequest("DELETE", `/api/trades/${trade?.id}/screenshot`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trades", trade?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      if (trade?.id) {
+        patchTradeCaches(trade.id, (currentTrade) => ({
+          ...currentTrade,
+          screenshotUrl: null,
+        }));
+      }
       setScreenshotMissing(false);
     },
   });
@@ -863,26 +1039,41 @@ function TradesPageInner() {
 
   const searchTerm = deferredSearch.trim().toLowerCase();
 
-  const filtered = useMemo(() => {
-    return (trades || []).filter((t) => {
-      if (searchTerm && !t.symbol.toLowerCase().includes(searchTerm)) return false;
-      if (typeFilter !== "all" && t.type !== typeFilter) return false;
-      if (statusFilter === "open" && t.isClosed) return false;
-      if (statusFilter === "closed" && !t.isClosed) return false;
-      return true;
-    });
-  }, [trades, searchTerm, typeFilter, statusFilter]);
+  useEffect(() => {
+    setVisibleCount(100);
+  }, [searchTerm, typeFilter, statusFilter, selectedAccountId]);
 
-  const summary = useMemo(() => {
-    const wins = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) > 0).length;
-    const losses = filtered.filter((t) => t.isClosed && getTradeNetPnl(t) < 0).length;
-    const totalPnl = filtered.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
-    const journaledCount = filtered.filter((trade) => trade.reason || trade.logic || trade.emotion || trade.screenshotUrl).length;
-    const aiCoveredCount = filtered.filter((trade) => Boolean(normalizeTradeGrade(trade.aiGrade))).length;
-    const averageNet = filtered.length > 0 ? totalPnl / filtered.length : 0;
-    const journalCompletion = filtered.length > 0 ? Math.round((journaledCount / filtered.length) * 100) : 0;
+  const filteredResult = useMemo(() => {
+    const filteredTrades: Trade[] = [];
+    let wins = 0;
+    let losses = 0;
+    let totalPnl = 0;
+    let journaledCount = 0;
+    let aiCoveredCount = 0;
+
+    for (const trade of trades || []) {
+      if (searchTerm && !trade.symbol.toLowerCase().includes(searchTerm)) continue;
+      if (typeFilter !== "all" && trade.type !== typeFilter) continue;
+      if (statusFilter === "open" && trade.isClosed) continue;
+      if (statusFilter === "closed" && !trade.isClosed) continue;
+
+      filteredTrades.push(trade);
+
+      const netPnl = getTradeNetPnl(trade);
+      totalPnl += netPnl;
+      if (trade.isClosed && netPnl > 0) wins += 1;
+      if (trade.isClosed && netPnl < 0) losses += 1;
+      if (trade.reason || trade.logic || trade.emotion || trade.screenshotUrl) journaledCount += 1;
+      if (normalizeTradeGrade(trade.aiGrade)) aiCoveredCount += 1;
+    }
+
+    const averageNet = filteredTrades.length > 0 ? totalPnl / filteredTrades.length : 0;
+    const journalCompletion = filteredTrades.length > 0
+      ? Math.round((journaledCount / filteredTrades.length) * 100)
+      : 0;
 
     return {
+      filtered: filteredTrades,
       wins,
       losses,
       totalPnl,
@@ -891,7 +1082,9 @@ function TradesPageInner() {
       averageNet,
       journalCompletion,
     };
-  }, [filtered]);
+  }, [trades, searchTerm, typeFilter, statusFilter]);
+
+  const filtered = filteredResult.filtered;
 
   const visibleTrades = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
@@ -903,7 +1096,7 @@ function TradesPageInner() {
     aiCoveredCount,
     averageNet,
     journalCompletion,
-  } = summary;
+  } = filteredResult;
 
   if (isLoading) {
     return (
@@ -1059,103 +1252,14 @@ function TradesPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {visibleTrades.map((trade) => {
-                  const tradeNet = getTradeNetPnl(trade);
-                  const pips = resolveTradePips(trade);
-                  const cachedGrade = normalizeTradeGrade(trade.aiGrade);
-
-                  const hasJournal = trade.reason || trade.logic || trade.emotion || trade.screenshotUrl;
-                  const emotionOpt = EMOTION_OPTIONS.find(e => e.value === trade.emotion);
-
-                  return (
-                    <tr
-                      key={trade.id}
-                      className="border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => setSelectedTrade(trade)}
-                      data-testid={`row-trade-${trade.id}`}
-                    >
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <div className={cn(
-                            "w-6 h-6 rounded flex items-center justify-center shrink-0",
-                            trade.type === "BUY" ? "bg-emerald-500/10" : "bg-red-500/10"
-                          )}>
-                            {trade.type === "BUY" ? (
-                              <ArrowUpRight className="w-3 h-3 text-emerald-500" />
-                            ) : (
-                              <ArrowDownRight className="w-3 h-3 text-red-500" />
-                            )}
-                          </div>
-                          <span className="text-sm font-medium font-mono">{trade.symbol}</span>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <Badge
-                          variant={trade.type === "BUY" ? "default" : "secondary"}
-                          className="text-[10px]"
-                        >
-                          {trade.type}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-sm text-muted-foreground hidden sm:table-cell">
-                        {formatDate(trade.openTime, timezone)}
-                      </td>
-                      <td className="p-3 text-sm text-muted-foreground hidden md:table-cell">
-                        {trade.isClosed ? formatDate(trade.closeTime, timezone) : "-"}
-                      </td>
-                      <td className="p-3 text-sm text-right font-mono hidden sm:table-cell">
-                        {trade.volume}
-                      </td>
-                      <td className="p-3 text-sm text-right font-mono hidden lg:table-cell">
-                        {pips !== null && pips !== undefined ? (
-                          <span className={getProfitColor(pips)}>
-                            {pips >= 0 ? "+" : ""}{pips}
-                          </span>
-                        ) : "-"}
-                      </td>
-                      <td className="p-3 text-sm text-right text-muted-foreground hidden lg:table-cell">
-                        <div className="flex items-center justify-end gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatDuration(trade.duration)}
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <span className={cn("text-sm font-mono font-medium", getProfitColor(tradeNet))}>
-                          {tradeNet >= 0 ? "+" : ""}{formatCurrency(tradeNet)}
-                        </span>
-                      </td>
-                      <td className="p-3 hidden lg:table-cell">
-                        <div className="flex justify-center">
-                          {cachedGrade ? (
-                            <Badge className={cn("text-[10px] border", gradeClass(cachedGrade))}>
-                              {cachedGrade}
-                            </Badge>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground">-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 hidden md:table-cell">
-                        <div className="flex items-center justify-center gap-1">
-                          {trade.screenshotUrl && <Image className="w-3 h-3 text-blue-500" />}
-                          {trade.reason && <Brain className="w-3 h-3 text-purple-500" />}
-                          {trade.logic && <Lightbulb className="w-3 h-3 text-amber-500" />}
-                          {emotionOpt && (
-                            <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full", emotionOpt.color)}>
-                              {emotionOpt.label}
-                            </span>
-                          )}
-                          {!hasJournal && <span className="text-[10px] text-muted-foreground">-</span>}
-                        </div>
-                      </td>
-                      <td className="p-3 text-right hidden md:table-cell">
-                        <Badge variant={trade.isClosed ? "outline" : "default"} className="text-[10px]">
-                          {trade.isClosed ? "Closed" : "Open"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {visibleTrades.map((trade) => (
+                  <TradeTableRow
+                    key={trade.id}
+                    trade={trade}
+                    timezone={timezone}
+                    onSelect={setSelectedTrade}
+                  />
+                ))}
               </tbody>
             </table>
           </div>

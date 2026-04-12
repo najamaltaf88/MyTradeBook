@@ -32,6 +32,7 @@ import type { NextFunction, Request, Response } from "express";
 import { publishUserUpdate, subscribeUserStream } from "./realtime";
 import { analyzePortfolio, analyzeTrade, normalizeTradingStyle } from "./ai-analyzer";
 import { AIAnalysisService } from "./ai-analysis-service";
+import { CalendarAIService } from "./calendar-ai-service";
 import { analyzePsychology } from "./psychology-engine";
 import { analyzeRisk } from "./risk-engine";
 import { analyzeStrategyEdge } from "./strategy-edge-engine";
@@ -593,7 +594,31 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   const aiAnalysisService = new AIAnalysisService(storage);
+  const calendarAiService = new CalendarAIService();
   let calendarCache = await storage.getCalendarCache();
+
+  async function loadCalendarFeed(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && calendarCache && (now - calendarCache.fetchedAt) < CALENDAR_CACHE_TTL) {
+      return calendarCache.data;
+    }
+
+    try {
+      const response = await fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json");
+      if (!response.ok) {
+        return calendarCache?.data ?? [];
+      }
+      const data = await response.json();
+      calendarCache = { data, fetchedAt: now };
+      await storage.setCalendarCache(calendarCache);
+      return data;
+    } catch {
+      if (!calendarCache) {
+        calendarCache = await storage.getCalendarCache();
+      }
+      return calendarCache?.data ?? [];
+    }
+  }
 
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -1097,7 +1122,7 @@ export async function registerRoutes(
     try {
       const userId = getUserId(req);
       const accountId = req.query.accountId as string | undefined;
-      const style = normalizeTradingStyle(req.query.style as string | undefined);
+      const style = normalizeTradingStyle("all");
       const trades = await storage.getTradesByUser(userId, accountId);
       const analysis = analyzePortfolio(trades, { style });
       res.json(analysis);
@@ -1115,12 +1140,14 @@ export async function registerRoutes(
       .object({
         accountId: z.string().optional(),
         style: z.string().optional(),
+        provider: z.enum(["grok", "gemini"]).optional(),
         forceRefresh: z.boolean().optional(),
       })
       .safeParse(req.body || {});
 
     const accountId = parsed.success ? parsed.data.accountId : undefined;
-    const style = normalizeTradingStyle(parsed.success ? parsed.data.style : undefined);
+    const style = normalizeTradingStyle("all");
+    const provider = parsed.success ? parsed.data.provider : undefined;
     const forceRefresh = parsed.success ? Boolean(parsed.data.forceRefresh) : false;
     let trades: Awaited<ReturnType<typeof storage.getTradesByUser>> = [];
 
@@ -1131,6 +1158,7 @@ export async function registerRoutes(
         trades,
         accountId,
         style,
+        provider,
         forceRefresh,
       });
       return res.json(analysis);
@@ -1143,6 +1171,7 @@ export async function registerRoutes(
           trades: trades,  // BUG FIX: Use original trades, not empty array
           accountId,
           style,
+          provider,
           forceRefresh: true,
         });
         Logger.logAi("ai_fallback_success", "success", userId);
@@ -2327,21 +2356,38 @@ export async function registerRoutes(
 
   const CALENDAR_CACHE_TTL = 15 * 60 * 1000;
 
+  app.get("/api/calendar/ai", localOnly, async (req, res) => {
+    try {
+      const timezone = typeof req.query.timezone === "string" ? req.query.timezone : undefined;
+      const date =
+        typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+          ? req.query.date
+          : undefined;
+      const provider =
+        req.query.provider === "gemini" || req.query.provider === "grok"
+          ? req.query.provider
+          : undefined;
+      const forceRefresh =
+        String(req.query.forceRefresh || "").toLowerCase() === "true" ||
+        String(req.query.forceRefresh || "") === "1";
+
+      const events = await loadCalendarFeed(forceRefresh);
+      const brief = await calendarAiService.generateDailyBrief({
+        events,
+        date,
+        timezone,
+        provider,
+        forceRefresh,
+      });
+      return res.json(brief);
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message || "Failed to generate calendar brief" });
+    }
+  });
+
   app.get("/api/calendar", localOnly, async (req, res) => {
     try {
-      const now = Date.now();
-      if (calendarCache && (now - calendarCache.fetchedAt) < CALENDAR_CACHE_TTL) {
-        return res.json(calendarCache.data);
-      }
-
-      const response = await fetch("https://nfs.faireconomy.media/ff_calendar_thisweek.json");
-      if (!response.ok) {
-        return res.json(calendarCache?.data ?? []);
-      }
-      const data = await response.json();
-      calendarCache = { data, fetchedAt: now };
-      await storage.setCalendarCache(calendarCache);
-      res.json(data);
+      res.json(await loadCalendarFeed());
     } catch (error: any) {
       if (!calendarCache) {
         calendarCache = await storage.getCalendarCache();

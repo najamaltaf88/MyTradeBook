@@ -6,10 +6,12 @@ import type { Trade } from "@shared/schema";
 import { resolveTradingSessionFromUtcHour } from "@shared/constants";
 import {
   analyzePortfolio,
+  filterTradesByStyle,
   normalizeTradingStyle,
   type TradingStyle,
 } from "./ai-analyzer";
 import type { IStorage } from "./storage";
+import { Logger } from "./logging";
 
 type InsightType =
   | "trading_discipline"
@@ -24,12 +26,17 @@ export interface CoachingInsight {
 
 export interface CoachingAnalysisResult {
   generatedAt: string;
-  source: "grok" | "algorithmic";
+  source: "grok" | "gemini" | "algorithmic";
   modelUsed: string;
   fallbackUsed: boolean;
   fromCache: boolean;
+  mentorSummary: string;
+  priorityFocus: string;
   insights: CoachingInsight[];
   recommendations: string[];
+  sessionPlan: string[];
+  reviewChecklist: string[];
+  providerMessage?: string;
 }
 
 export type GenerateSuggestionsInput = {
@@ -37,6 +44,7 @@ export type GenerateSuggestionsInput = {
   trades: Trade[];
   accountId?: string;
   style?: string;
+  provider?: "grok" | "gemini";
   forceRefresh?: boolean;
 };
 
@@ -66,6 +74,10 @@ type Dataset = {
   user_id: string;
   account_id: string | null;
   style: TradingStyle;
+  style_scope: {
+    matched_trades: number;
+    total_trades: number;
+  };
   summary: {
     total_trades: number;
     closed_trades: number;
@@ -113,31 +125,44 @@ type Dataset = {
 
 const MODEL_FALLBACK = "algorithmic-v1";
 const GROK_ENDPOINT = process.env.GROK_API_URL || "https://api.x.ai/v1/chat/completions";
-const GROK_MODEL = process.env.GROK_MODEL || "grok-2-latest";
-const GROK_TIMEOUT_MS = 15000;
+const GROK_MODEL = process.env.GROK_MODEL || "grok-4";
+const GROK_TIMEOUT_MS = 45000;
+const GEMINI_ENDPOINT = process.env.GEMINI_API_URL || "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_TIMEOUT_MS = 45000;
 const CACHE_LOOKUP_LIMIT = 40;
 
 const AIJsonSchema = z.object({
+  mentorSummary: z.string().min(1),
+  priorityFocus: z.string().min(1),
   insights: z.array(z.object({
     type: z.string().min(1),
     message: z.string().min(1),
   })).default([]),
   recommendations: z.array(z.string().min(1)).default([]),
+  sessionPlan: z.array(z.string().min(1)).default([]),
+  reviewChecklist: z.array(z.string().min(1)).default([]),
 });
 
 const CachedResultSchema = z.object({
   generatedAt: z.string(),
-  source: z.enum(["grok", "algorithmic"]),
+  source: z.enum(["grok", "gemini", "algorithmic"]),
   modelUsed: z.string().min(1),
   fallbackUsed: z.boolean(),
+  mentorSummary: z.string().min(1),
+  priorityFocus: z.string().min(1),
   insights: z.array(z.object({
     type: z.enum(["trading_discipline", "risk_management", "psychology", "strategy_performance"]),
     message: z.string().min(1),
   })),
   recommendations: z.array(z.string().min(1)),
+  sessionPlan: z.array(z.string().min(1)).default([]),
+  reviewChecklist: z.array(z.string().min(1)).default([]),
+  providerMessage: z.string().optional(),
 });
 
 let cachedEnvApiKey: string | null | undefined;
+let cachedGeminiApiKey: string | null | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -252,8 +277,8 @@ function formatTradePromptLine(trade: NormalizedTrade, index: number): string {
     `result ${formatPromptResult(trade.pnl)}`,
     `lot ${formatPromptNumber(trade.lot_size, 2)}`,
     `RR ${formatPromptNumber(trade.rr_ratio, 2)}`,
-    `SL ${formatPromptFlag(trade.discipline_scores.sl_respected)}`,
-    `TP ${formatPromptFlag(trade.discipline_scores.tp_respected)}`,
+    `SL ${formatPromptFlagLabel(trade.discipline_scores.sl_respected)}`,
+    `TP ${formatPromptFlagLabel(trade.discipline_scores.tp_respected)}`,
     `strategy ${trade.strategy_tag || "none"}`,
     `emotion ${trade.emotion_tag || "none"}`,
     `duration ${formatPromptNumber(trade.trade_duration_minutes, 1)}m`,
@@ -317,6 +342,48 @@ function resolveGrokApiKey(): string | undefined {
   }
 
   cachedEnvApiKey = null;
+  return undefined;
+}
+
+function resolveGeminiApiKey(): string | undefined {
+  if (cachedGeminiApiKey !== undefined) {
+    return cachedGeminiApiKey || undefined;
+  }
+
+  const direct = [
+    process.env.GEMINI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+  ]
+    .map((item) => (item ? sanitizeEnvValue(item) : ""))
+    .find((item) => Boolean(item));
+
+  if (direct) {
+    cachedGeminiApiKey = direct;
+    return direct;
+  }
+
+  const envPath = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) {
+    cachedGeminiApiKey = null;
+    return undefined;
+  }
+
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    for (const key of ["GEMINI_API_KEY", "GOOGLE_API_KEY"]) {
+      const regex = new RegExp(`^${key}\\s*[:=]\\s*(.+)$`, "i");
+      const match = trimmed.match(regex);
+      if (!match?.[1]) continue;
+      const value = sanitizeEnvValue(match[1]);
+      if (!value) continue;
+      cachedGeminiApiKey = value;
+      return value;
+    }
+  }
+
+  cachedGeminiApiKey = null;
   return undefined;
 }
 
@@ -392,32 +459,51 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function formatPromptFlagLabel(value: boolean | null): string {
+  if (value === null) return "none";
+  return value ? "yes" : "no";
+}
+
+function sanitizeProviderMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "Unknown Grok error");
+  return message
+    .replace(/gsk_[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/Incorrect API key provided:\s*[^.]+/i, "Incorrect API key provided");
+}
+
 export class AIAnalysisService {
   constructor(private readonly storage: IStorage) {}
 
   async generateFinalSuggestions(input: GenerateSuggestionsInput): Promise<CoachingAnalysisResult> {
     const style = normalizeTradingStyle(input.style);
+    const provider = input.provider === "gemini" ? "gemini" : "grok";
     const dataset = this.buildDataset({ ...input, style });
-    const cacheKey = this.buildCacheKey(dataset);
+    const cacheKey = this.buildCacheKey(dataset, provider);
 
     if (!input.forceRefresh) {
-      const cached = await this.getCachedResult(input.userId, cacheKey);
+      const cached = await this.getCachedResult(input.userId, cacheKey, provider);
       if (cached) return { ...cached, fromCache: true };
     }
 
     let result: CoachingAnalysisResult;
     try {
-      const ai = await this.getAISuggestions(dataset);
+      const ai = await this.getAISuggestions(dataset, provider);
       result = {
         generatedAt: new Date().toISOString(),
-        source: "grok",
-        modelUsed: GROK_MODEL,
+        source: provider,
+        modelUsed: provider === "gemini" ? GEMINI_MODEL : GROK_MODEL,
         fallbackUsed: false,
         fromCache: false,
+        mentorSummary: ai.mentorSummary,
+        priorityFocus: ai.priorityFocus,
         insights: ai.insights,
         recommendations: ai.recommendations,
+        sessionPlan: ai.sessionPlan,
+        reviewChecklist: ai.reviewChecklist,
       };
-    } catch {
+    } catch (error) {
+      const providerMessage = sanitizeProviderMessage(error);
+      Logger.logAi(`${provider}_provider_failed`, "error", input.userId, providerMessage);
       const fallback = this.getAlgorithmicSuggestions(dataset);
       result = {
         generatedAt: new Date().toISOString(),
@@ -425,8 +511,13 @@ export class AIAnalysisService {
         modelUsed: MODEL_FALLBACK,
         fallbackUsed: true,
         fromCache: false,
+        mentorSummary: fallback.mentorSummary,
+        priorityFocus: fallback.priorityFocus,
         insights: fallback.insights,
         recommendations: fallback.recommendations,
+        sessionPlan: fallback.sessionPlan,
+        reviewChecklist: fallback.reviewChecklist,
+        providerMessage,
       };
     }
 
@@ -434,19 +525,25 @@ export class AIAnalysisService {
     return result;
   }
 
-  async getAISuggestions(dataset: Dataset): Promise<{
+  async getAISuggestions(dataset: Dataset, provider: "grok" | "gemini"): Promise<{
+    mentorSummary: string;
+    priorityFocus: string;
     insights: CoachingInsight[];
     recommendations: string[];
+    sessionPlan: string[];
+    reviewChecklist: string[];
   }> {
-    const apiKey = resolveGrokApiKey();
+    const apiKey = provider === "gemini" ? resolveGeminiApiKey() : resolveGrokApiKey();
     if (!apiKey) {
-      throw new Error("Grok API key not configured.");
+      throw new Error(`${provider === "gemini" ? "Gemini" : "Grok"} API key not configured.`);
     }
 
     let lastError: unknown;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        return await this.callGrok(apiKey, dataset);
+        return provider === "gemini"
+          ? await this.callGemini(apiKey, dataset)
+          : await this.callGrok(apiKey, dataset);
       } catch (error) {
         lastError = error;
         if (attempt < 2) {
@@ -458,15 +555,21 @@ export class AIAnalysisService {
 
     throw lastError instanceof Error
       ? lastError
-      : new Error("Grok API failed.");
+      : new Error(`${provider === "gemini" ? "Gemini" : "Grok"} API failed.`);
   }
 
   getAlgorithmicSuggestions(dataset: Dataset): {
+    mentorSummary: string;
+    priorityFocus: string;
     insights: CoachingInsight[];
     recommendations: string[];
+    sessionPlan: string[];
+    reviewChecklist: string[];
   } {
     const insights: CoachingInsight[] = [];
     const recommendations: string[] = [];
+    const sessionPlan: string[] = [];
+    const reviewChecklist: string[] = [];
     const addInsight = (type: InsightType, message: string) => {
       if (!message.trim()) return;
       if (insights.some((item) => item.type === type && item.message === message)) return;
@@ -476,6 +579,16 @@ export class AIAnalysisService {
       if (!message.trim()) return;
       if (recommendations.includes(message)) return;
       recommendations.push(message);
+    };
+    const addSessionPlan = (message: string) => {
+      if (!message.trim()) return;
+      if (sessionPlan.includes(message)) return;
+      sessionPlan.push(message);
+    };
+    const addReviewCheck = (message: string) => {
+      if (!message.trim()) return;
+      if (reviewChecklist.includes(message)) return;
+      reviewChecklist.push(message);
     };
 
     const closed = dataset.trades.filter((trade) => trade.is_closed);
@@ -496,6 +609,7 @@ export class AIAnalysisService {
         `The sample is still small (${dataset.summary.closed_trades} closed trades), so treat any edge reading as provisional rather than proven.`,
       );
       addRecommendation("Keep size steady and keep tagging setups until you have at least 20 closed trades for stronger pattern confidence.");
+      addReviewCheck("Do not change the strategy based on this sample alone. Build a bigger style-specific sample first.");
     }
 
     for (let i = 3; i < closed.length; i++) {
@@ -511,6 +625,7 @@ export class AIAnalysisService {
         );
         addRecommendation("Next session: stop after 2 consecutive losses, review the last setup, and only resume at base size.");
         addRecommendation("After a loss streak, do not allow the next trade to exceed your normal risk until a checklist is completed.");
+        addSessionPlan("If two losses happen back-to-back, stop live execution and switch to review mode for 15 minutes.");
         break;
       }
     }
@@ -521,6 +636,7 @@ export class AIAnalysisService {
         `Selectivity broke down on at least one day, with as many as ${dataset.discipline_scores.max_trades_per_day} trades taken.`,
       );
       addRecommendation("Set a hard daily trade cap and decide the cut-off before the session opens, not after the account is emotional.");
+      addSessionPlan(`Respect the ${dataset.style} trade-frequency cap before the session begins.`);
     }
 
     if (dataset.discipline_scores.sl_respected_pct < 80) {
@@ -529,6 +645,7 @@ export class AIAnalysisService {
         `Stop-loss discipline is leaking: SL was respected on only ${dataset.discipline_scores.sl_respected_pct.toFixed(1)}% of evaluable trades.`,
       );
       addRecommendation("Make stop placement part of the entry checklist and ban widening the stop once you are in the trade.");
+      addReviewCheck("Mark every trade where the stop was moved, widened, or missing.");
     }
 
     if (dataset.discipline_scores.tp_respected_pct < 60) {
@@ -537,6 +654,7 @@ export class AIAnalysisService {
         `Take-profit execution is inconsistent: TP was respected on ${dataset.discipline_scores.tp_respected_pct.toFixed(1)}% of evaluable trades.`,
       );
       addRecommendation("Write one exit rule for the next session and follow it for every qualified setup instead of improvising mid-trade.");
+      addReviewCheck("Compare actual exits against planned TP or management rule for the next 10 trades.");
     }
 
     if (dataset.risk_stability_scores.risk_variance > 2 || dataset.risk_stability_scores.stability_index < 60) {
@@ -545,6 +663,7 @@ export class AIAnalysisService {
         `Risk per trade is unstable (variance ${dataset.risk_stability_scores.risk_variance.toFixed(2)}), which makes the P&L harder to trust.`,
       );
       addRecommendation("Reduce complexity: use one fixed sizing model for the next 20 trades so the journal measures execution instead of random size changes.");
+      addSessionPlan("Lock one position-sizing formula for the next review cycle. No discretionary size changes.");
     }
 
     if (dataset.psychology_patterns.sizing_inconsistency_score >= 35) {
@@ -561,6 +680,7 @@ export class AIAnalysisService {
         `Large drawdown pattern detected (${dataset.summary.max_drawdown.toFixed(2)}).`,
       );
       addRecommendation("Reduce position size during drawdown recovery and focus on A+ setups.");
+      addSessionPlan("Trade reduced size until drawdown stabilizes and one clean week of execution is logged.");
     }
 
     if (dataset.psychology_patterns.panic_exit_score >= 35) {
@@ -569,6 +689,7 @@ export class AIAnalysisService {
         "Winners appear to be cut early relative to your normal winning-trade duration.",
       );
       addRecommendation("Create one objective hold or trail rule for winners so fear does not close the trade before the setup has room to work.");
+      addReviewCheck("Review the last winners and mark which ones were closed before the plan was fully invalidated.");
     }
 
     if (dataset.psychology_patterns.overconfidence_score >= 35) {
@@ -585,6 +706,7 @@ export class AIAnalysisService {
         "There is evidence of loss-chasing after losing trades.",
       );
       addRecommendation("Use a short post-loss reset checklist before any re-entry so the next trade starts from process, not frustration.");
+      addSessionPlan("After a losing trade, write the next setup before taking it. No instant revenge entries.");
     }
 
     if (dataset.psychology_patterns.recency_bias_score >= 60) {
@@ -593,6 +715,7 @@ export class AIAnalysisService {
         "Recent trades are dominating decision weight more than the broader sample.",
       );
       addRecommendation("Before changing strategy rules, review the last 20 trades so one bad week does not rewrite the whole plan.");
+      addReviewCheck("Anchor decisions to the last 20 style-matched trades, not the last 2 or 3 outcomes.");
     }
 
     const weakestSymbol = dataset.strategy_performance.by_symbol
@@ -623,6 +746,7 @@ export class AIAnalysisService {
         `${bestStrategy.key} is your strongest tagged setup so far (${bestStrategy.trades} trades, ${bestStrategy.winRate.toFixed(1)}% win rate, ${bestStrategy.pnl.toFixed(2)} PnL).`,
       );
       addRecommendation(`Build a stricter checklist around ${bestStrategy.key} and prioritize it before lower-conviction setups.`);
+      addSessionPlan(`Lead the next session with ${bestStrategy.key} only if the exact checklist is present.`);
     }
 
     if (weakestStrategy && weakestStrategy.pnl < 0) {
@@ -698,16 +822,52 @@ export class AIAnalysisService {
       addRecommendation("Keep journaling every trade and run a weekly review so small drifts are caught before they become expensive habits.");
     }
 
+    if (dataset.style_scope.matched_trades === 0) {
+      addInsight(
+        "strategy_performance",
+        `No trades in the current dataset were classified as ${dataset.style}. Add more ${dataset.style} examples or check trade durations/tags.`,
+      );
+      addRecommendation(`Log or import more ${dataset.style} trades so the mentor can analyze the correct style bucket.`);
+      addReviewCheck("Confirm trade duration and notes are accurate so style classification stays reliable.");
+    }
+
+    const mentorSummary =
+      dataset.style_scope.matched_trades === 0
+        ? `No ${dataset.style} trades matched the current dataset, so the coach cannot make a reliable style-specific read yet.`
+        : `Mentor read: ${dataset.style} style shows ${dataset.summary.win_rate.toFixed(1)}% win rate across ${dataset.summary.closed_trades} closed trades. The priority is to protect capital first, then reinforce the strongest repeatable edge.`;
+
+    const priorityFocus =
+      recommendations[0] ||
+      `Stay disciplined inside the ${dataset.style} bucket and only review style-matched trades before changing rules.`;
+
+    if (!sessionPlan.length) {
+      addSessionPlan("Take only setups that fully match your checklist and base risk model.");
+    }
+    if (!reviewChecklist.length) {
+      addReviewCheck("Review whether entry, stop, and exit all matched the written plan.");
+    }
+
     return {
+      mentorSummary,
+      priorityFocus,
       insights: insights.slice(0, 8),
       recommendations: dedupe(recommendations).slice(0, 8),
+      sessionPlan: dedupe(sessionPlan).slice(0, 5),
+      reviewChecklist: dedupe(reviewChecklist).slice(0, 5),
     };
   }
 
   private async callGrok(
     apiKey: string,
     dataset: Dataset,
-  ): Promise<{ insights: CoachingInsight[]; recommendations: string[] }> {
+  ): Promise<{
+    mentorSummary: string;
+    priorityFocus: string;
+    insights: CoachingInsight[];
+    recommendations: string[];
+    sessionPlan: string[];
+    reviewChecklist: string[];
+  }> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GROK_TIMEOUT_MS);
 
@@ -721,10 +881,64 @@ export class AIAnalysisService {
         body: JSON.stringify({
           model: GROK_MODEL,
           temperature: 0.2,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "trading_mentor_response",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  mentorSummary: { type: "string" },
+                  priorityFocus: { type: "string" },
+                  insights: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        type: {
+                          type: "string",
+                          enum: [
+                            "trading_discipline",
+                            "risk_management",
+                            "psychology",
+                            "strategy_performance",
+                          ],
+                        },
+                        message: { type: "string" },
+                      },
+                      required: ["type", "message"],
+                    },
+                  },
+                  recommendations: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  sessionPlan: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  reviewChecklist: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+                required: [
+                  "mentorSummary",
+                  "priorityFocus",
+                  "insights",
+                  "recommendations",
+                  "sessionPlan",
+                  "reviewChecklist",
+                ],
+              },
+            },
+          },
           messages: [
             {
               role: "system",
-              content: "You are a professional trading psychologist and risk manager. Return only strict JSON.",
+              content: "You are an elite trading mentor, performance coach, and risk manager. Be direct, evidence-based, and practical. Return only strict JSON.",
             },
             {
               role: "user",
@@ -736,7 +950,8 @@ export class AIAnalysisService {
       });
 
       if (!response.ok) {
-        throw new Error(`Grok API failed with status ${response.status}.`);
+        const message = await response.text();
+        throw new Error(`Grok API failed with status ${response.status}: ${message}`);
       }
 
       const payload = (await response.json()) as unknown;
@@ -776,13 +991,130 @@ export class AIAnalysisService {
         .filter((item): item is CoachingInsight => Boolean(item));
 
       const recommendations = dedupe(validated.data.recommendations);
+      const sessionPlan = dedupe(validated.data.sessionPlan);
+      const reviewChecklist = dedupe(validated.data.reviewChecklist);
       if (!insights.length || !recommendations.length) {
         return this.getAlgorithmicSuggestions(dataset);
       }
 
       return {
+        mentorSummary: validated.data.mentorSummary.trim(),
+        priorityFocus: validated.data.priorityFocus.trim(),
         insights: insights.slice(0, 8),
         recommendations: recommendations.slice(0, 8),
+        sessionPlan: sessionPlan.slice(0, 5),
+        reviewChecklist: reviewChecklist.slice(0, 5),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async callGemini(
+    apiKey: string,
+    dataset: Dataset,
+  ): Promise<{
+    mentorSummary: string;
+    priorityFocus: string;
+    insights: CoachingInsight[];
+    recommendations: string[];
+    sessionPlan: string[];
+    reviewChecklist: string[];
+  }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(
+        `${GEMINI_ENDPOINT}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: this.buildPrompt(dataset) }],
+              },
+            ],
+            systemInstruction: {
+              parts: [
+                {
+                  text: "You are an elite trading mentor, performance coach, and risk manager. Be direct, evidence-based, and practical. Return only strict JSON.",
+                },
+              ],
+            },
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json",
+            },
+          }),
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(`Gemini API failed with status ${response.status}: ${message}`);
+      }
+
+      const payload = (await response.json()) as unknown;
+      if (!isRecord(payload) || !Array.isArray(payload.candidates) || payload.candidates.length === 0) {
+        throw new Error("Malformed Gemini API response.");
+      }
+
+      const first = payload.candidates[0];
+      if (!isRecord(first) || !isRecord(first.content) || !Array.isArray(first.content.parts)) {
+        throw new Error("Malformed Gemini candidate.");
+      }
+
+      const textContent = first.content.parts
+        .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+        .join("\n")
+        .trim();
+
+      if (!textContent) {
+        throw new Error("Empty Gemini API content.");
+      }
+
+      const parsed = JSON.parse(extractJson(textContent)) as unknown;
+      const validated = AIJsonSchema.safeParse(parsed);
+      if (!validated.success) {
+        throw new Error("Invalid Gemini JSON schema.");
+      }
+
+      const insights = validated.data.insights
+        .map((item): CoachingInsight | null => {
+          const type = String(item.type || "").trim().toLowerCase();
+          const safeType: InsightType =
+            type === "trading_discipline" ||
+            type === "risk_management" ||
+            type === "psychology" ||
+            type === "strategy_performance"
+              ? (type as InsightType)
+              : "strategy_performance";
+          const message = item.message.trim();
+          if (!message) return null;
+          return { type: safeType, message };
+        })
+        .filter((item): item is CoachingInsight => Boolean(item));
+
+      const recommendations = dedupe(validated.data.recommendations);
+      const sessionPlan = dedupe(validated.data.sessionPlan);
+      const reviewChecklist = dedupe(validated.data.reviewChecklist);
+      if (!insights.length || !recommendations.length) {
+        return this.getAlgorithmicSuggestions(dataset);
+      }
+
+      return {
+        mentorSummary: validated.data.mentorSummary.trim(),
+        priorityFocus: validated.data.priorityFocus.trim(),
+        insights: insights.slice(0, 8),
+        recommendations: recommendations.slice(0, 8),
+        sessionPlan: sessionPlan.slice(0, 5),
+        reviewChecklist: reviewChecklist.slice(0, 5),
       };
     } finally {
       clearTimeout(timeout);
@@ -802,19 +1134,35 @@ export class AIAnalysisService {
     const recentTradeBreakdown = recentTrades.length
       ? recentTrades.map((trade, index) => formatTradePromptLine(trade, index)).join("\n")
       : "No recent trades available.";
+    const scopeLines =
+      dataset.style === "all"
+        ? [
+            "Analyze all imported trades for this account scope. Do not segment by scalping, intraday, or swing.",
+            `You are reviewing all ${dataset.style_scope.matched_trades} imported trades in scope.`,
+          ]
+        : [
+            `Only analyze trades already classified as ${dataset.style}. Ignore any other style.`,
+            `You are reviewing ${dataset.style_scope.matched_trades} matched trades out of ${dataset.style_scope.total_trades} total imported trades.`,
+          ];
 
     return [
       "Analyze this trading data and provide advanced personalized coaching suggestions.",
+      ...scopeLines,
       "Focus on discipline, risk management, psychology, and strategy performance.",
       "Use the aggregate stats JSON and the recent trade breakdown as evidence.",
       "Reference specific trade numbers like T3 or T14 whenever you spot a pattern in the recent trades.",
       "Avoid generic advice, avoid filler, and only comment on what the actual data shows.",
       "Be explicit about uncertainty when the sample is small or inconclusive.",
+      "Write like a strict but helpful mentor preparing the trader for the next session.",
+      "mentorSummary should be a short mentor-style overview.",
+      "priorityFocus should name the single most important correction or edge to protect next.",
       "Each insight should explain what is happening, how confident you are, and why it matters.",
       "Recommendations should be actionable, concrete, and written like a coach preparing the next trading session or review drill.",
+      "sessionPlan should contain concrete next-session actions.",
+      "reviewChecklist should contain post-session review checks.",
       "Include a mix of protect-capital advice and exploit-edge advice when the data supports it.",
       "Return strict JSON only in this shape:",
-      "{\"insights\":[{\"type\":\"trading_discipline|risk_management|psychology|strategy_performance\",\"message\":\"...\"}],\"recommendations\":[\"...\"]}",
+      "{\"mentorSummary\":\"...\",\"priorityFocus\":\"...\",\"insights\":[{\"type\":\"trading_discipline|risk_management|psychology|strategy_performance\",\"message\":\"...\"}],\"recommendations\":[\"...\"],\"sessionPlan\":[\"...\"],\"reviewChecklist\":[\"...\"]}",
       "Aggregate stats JSON:",
       JSON.stringify(aggregatePayload),
       `Recent trade breakdown (${recentTrades.length} trades):`,
@@ -823,7 +1171,8 @@ export class AIAnalysisService {
   }
 
   private buildDataset(input: GenerateSuggestionsInput & { style: TradingStyle }): Dataset {
-    const ordered = [...input.trades].sort((a, b) => openMs(a) - openMs(b));
+    const scopedTrades = filterTradesByStyle(input.trades, input.style);
+    const ordered = [...scopedTrades].sort((a, b) => openMs(a) - openMs(b));
     const volumes = ordered
       .map((trade) => toNumber(trade.volume, 0))
       .filter((value) => value > 0);
@@ -1005,6 +1354,10 @@ export class AIAnalysisService {
       user_id: input.userId,
       account_id: input.accountId || null,
       style: input.style,
+      style_scope: {
+        matched_trades: scopedTrades.length,
+        total_trades: input.trades.length,
+      },
       summary: {
         total_trades: normalized.length,
         closed_trades: closed.length,
@@ -1053,8 +1406,9 @@ export class AIAnalysisService {
     };
   }
 
-  private buildCacheKey(dataset: Dataset): string {
+  private buildCacheKey(dataset: Dataset, provider: "grok" | "gemini"): string {
     const fingerprint = {
+      provider,
       user_id: dataset.user_id,
       account_id: dataset.account_id,
       style: dataset.style,
@@ -1078,6 +1432,7 @@ export class AIAnalysisService {
   private async getCachedResult(
     userId: string,
     cacheKey: string,
+    provider: "grok" | "gemini",
   ): Promise<CoachingAnalysisResult | null> {
     const logs = await this.storage.getAiAnalysisLogs(userId, CACHE_LOOKUP_LIMIT);
     for (const log of logs) {
@@ -1093,6 +1448,8 @@ export class AIAnalysisService {
       if (parsed.cacheKey !== cacheKey) continue;
       const validated = CachedResultSchema.safeParse(parsed.result);
       if (!validated.success) continue;
+      if (validated.data.fallbackUsed) continue;
+      if (validated.data.source !== provider) continue;
       return {
         ...validated.data,
         fromCache: true,
@@ -1120,8 +1477,13 @@ export class AIAnalysisService {
         source: result.source,
         modelUsed: result.modelUsed,
         fallbackUsed: result.fallbackUsed,
+        mentorSummary: result.mentorSummary,
+        priorityFocus: result.priorityFocus,
         insights: result.insights,
         recommendations: result.recommendations,
+        sessionPlan: result.sessionPlan,
+        reviewChecklist: result.reviewChecklist,
+        providerMessage: result.providerMessage,
       },
     };
 

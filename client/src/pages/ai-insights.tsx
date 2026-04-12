@@ -4,13 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAccount } from "@/hooks/use-account";
 import { useAnalysisStyle } from "@/hooks/use-analysis-style";
 import { formatCurrency, getProfitColor, cn } from "@/lib/utils";
@@ -24,7 +17,13 @@ type TradeAnalysis = {
 };
 
 type PortfolioAnalysis = {
-  style: "scalping" | "intraday" | "swing";
+  style: "all";
+  styleScope: {
+    requestedStyle: "all";
+    matchedTrades: number;
+    totalTrades: number;
+    classification: "all_trades" | "keyword_then_duration";
+  };
   generatedAt: string;
   performanceScore: number;
   componentScores: {
@@ -106,13 +105,52 @@ type CoachingInsight = {
 
 type CoachingAnalysisResult = {
   generatedAt: string;
-  source: "grok" | "algorithmic";
+  source: "grok" | "gemini" | "algorithmic";
   modelUsed: string;
   fallbackUsed: boolean;
   fromCache: boolean;
+  mentorSummary?: string;
+  priorityFocus?: string;
   insights: CoachingInsight[];
   recommendations: string[];
+  sessionPlan?: string[];
+  reviewChecklist?: string[];
+  providerMessage?: string;
 };
+
+type ProviderKey = "grok" | "gemini";
+
+function buildProviderFallback(provider: ProviderKey, error?: unknown): CoachingAnalysisResult {
+  const providerLabel = provider === "grok" ? "Grok" : "Gemini";
+  const providerMessage = error instanceof Error ? error.message : undefined;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    source: "algorithmic",
+    modelUsed: "algorithmic-v1",
+    fallbackUsed: true,
+    fromCache: false,
+    mentorSummary: `${providerLabel} is currently unavailable, so the app is showing internal coach guidance instead.`,
+    priorityFocus: "Keep collecting clean, all-trade journal data so the next AI run has better evidence.",
+    insights: [
+      {
+        type: "strategy_performance",
+        message: "Detailed AI analysis is temporarily unavailable. Baseline coaching remains active.",
+      },
+    ],
+    recommendations: [
+      "Keep risk fixed and continue logging every trade for better pattern detection.",
+    ],
+    sessionPlan: [
+      "Trade only your written setup checklist.",
+      "Keep position size fixed until the AI providers are restored.",
+    ],
+    reviewChecklist: [
+      "Review all recent trades before changing rules.",
+    ],
+    providerMessage,
+  };
+}
 
 function scoreColor(score: number) {
   if (score >= 75) return "text-emerald-500";
@@ -128,9 +166,7 @@ function gradeCounts(trades: TradeAnalysis[]) {
 }
 
 function styleLabel(style: string) {
-  if (style === "scalping") return "Scalping";
-  if (style === "swing") return "Swing";
-  return "Intraday";
+  return style === "all" ? "All Trades" : "All Trades";
 }
 
 function insightLabel(type: CoachingInsight["type"]) {
@@ -140,10 +176,9 @@ function insightLabel(type: CoachingInsight["type"]) {
   return "Strategy";
 }
 
-function buildAiQuery(accountId: string | undefined, style: string) {
+function buildAiQuery(accountId: string | undefined) {
   const params = new URLSearchParams();
   if (accountId) params.set("accountId", accountId);
-  params.set("style", style);
   return `?${params.toString()}`;
 }
 
@@ -155,6 +190,7 @@ async function downloadAiReportPdf(
   const { default: autoTable } = await import("jspdf-autotable");
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const tableDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 14;
 
@@ -191,7 +227,7 @@ async function downloadAiReportPdf(
     headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
     margin: { left: 14 },
   });
-  y = (doc as any).lastAutoTable.finalY + 7;
+  y = (tableDoc.lastAutoTable?.finalY ?? y) + 7;
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
@@ -235,7 +271,7 @@ async function downloadAiReportPdf(
     headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
     margin: { left: 14 },
   });
-  y = (doc as any).lastAutoTable.finalY + 6;
+  y = (tableDoc.lastAutoTable?.finalY ?? y) + 6;
 
   if (y > 220) {
     doc.addPage();
@@ -259,7 +295,7 @@ async function downloadAiReportPdf(
     headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
     margin: { left: 14 },
   });
-  y = (doc as any).lastAutoTable.finalY + 6;
+  y = (tableDoc.lastAutoTable?.finalY ?? y) + 6;
 
   autoTable(doc, {
     startY: y,
@@ -294,9 +330,9 @@ async function downloadAiReportPdf(
 
 export default function AiInsightsPage() {
   const { selectedAccount } = useAccount();
-  const { style, setStyle } = useAnalysisStyle();
-  const query = buildAiQuery(selectedAccount?.id, style);
-  const [coaching, setCoaching] = useState<CoachingAnalysisResult | null>(null);
+  const { style } = useAnalysisStyle();
+  const query = buildAiQuery(selectedAccount?.id);
+  const [coachingByProvider, setCoachingByProvider] = useState<Partial<Record<ProviderKey, CoachingAnalysisResult>>>({});
 
   const { data, isLoading, isError } = useQuery<PortfolioAnalysis>({
     queryKey: ["/api/ai/portfolio", selectedAccount?.id || "__all__", style],
@@ -308,32 +344,34 @@ export default function AiInsightsPage() {
   });
 
   const analyzeMutation = useMutation({
-    mutationFn: async (): Promise<CoachingAnalysisResult> => {
-      const res = await apiRequest("POST", "/api/ai/analyze", {
-        accountId: selectedAccount?.id,
-        style,
-      });
-      return res.json();
+    mutationFn: async (): Promise<Record<ProviderKey, CoachingAnalysisResult>> => {
+      const loadProvider = async (provider: ProviderKey) => {
+        const res = await apiRequest("POST", "/api/ai/analyze", {
+          accountId: selectedAccount?.id,
+          style,
+          provider,
+          forceRefresh: true,
+        });
+        return res.json() as Promise<CoachingAnalysisResult>;
+      };
+
+      const [grok, gemini] = await Promise.allSettled([
+        loadProvider("grok"),
+        loadProvider("gemini"),
+      ]);
+
+      return {
+        grok: grok.status === "fulfilled" ? grok.value : buildProviderFallback("grok", grok.reason),
+        gemini: gemini.status === "fulfilled" ? gemini.value : buildProviderFallback("gemini", gemini.reason),
+      };
     },
     onSuccess: (result) => {
-      setCoaching(result);
+      setCoachingByProvider(result);
     },
     onError: () => {
-      setCoaching({
-        generatedAt: new Date().toISOString(),
-        source: "algorithmic",
-        modelUsed: "algorithmic-v1",
-        fallbackUsed: true,
-        fromCache: false,
-        insights: [
-          {
-            type: "strategy_performance",
-            message: "Detailed AI analysis is temporarily unavailable. Baseline coaching remains active.",
-          },
-        ],
-        recommendations: [
-          "Keep risk fixed and continue logging every trade for better pattern detection.",
-        ],
+      setCoachingByProvider({
+        grok: buildProviderFallback("grok"),
+        gemini: buildProviderFallback("gemini"),
       });
     },
   });
@@ -375,23 +413,16 @@ export default function AiInsightsPage() {
             AI Insights
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Rule-based performance intelligence for {selectedAccount?.name || "all accounts"}
+            Side-by-side AI mentor review for {selectedAccount?.name || "all accounts"}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Profile: {styleLabel(style)}
+            Scope: {styleLabel(style)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Trade scope: all {data.styleScope.matchedTrades} imported trades are included
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={style} onValueChange={(value) => setStyle(value as "scalping" | "intraday" | "swing")}>
-            <SelectTrigger className="w-40" data-testid="select-ai-style">
-              <SelectValue placeholder="Trading style" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="scalping">Scalping</SelectItem>
-              <SelectItem value="intraday">Intraday</SelectItem>
-              <SelectItem value="swing">Swing</SelectItem>
-            </SelectContent>
-          </Select>
           <Button
             onClick={() => analyzeMutation.mutate()}
             disabled={analyzeMutation.isPending}
@@ -410,55 +441,102 @@ export default function AiInsightsPage() {
         </div>
       </div>
 
-      <Card className="page-fade-in stagger-1" data-testid="card-ai-coaching">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Brain className="w-4 h-4" />
-            Trading Psychology Coach
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {coaching ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant={coaching.source === "grok" ? "default" : "secondary"}>
-                  {coaching.source === "grok" ? "Grok AI" : "Algorithmic Fallback"}
-                </Badge>
-                {coaching.fromCache && <Badge variant="outline">Cached</Badge>}
-                {coaching.fallbackUsed && <Badge variant="outline">Auto Fallback</Badge>}
-                <span className="text-muted-foreground">
-                  {new Date(coaching.generatedAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {coaching.insights.map((item, index) => (
-                  <div key={index} className="rounded-2xl border border-border bg-card p-3">
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      {insightLabel(item.type)}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 page-fade-in stagger-1">
+        {(["grok", "gemini"] as const).map((provider) => {
+          const coaching = coachingByProvider[provider];
+          return (
+            <Card className="h-full" data-testid={`card-ai-coaching-${provider}`} key={provider}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Brain className="w-4 h-4" />
+                  {provider === "grok" ? "Grok Mentor" : "Gemini Mentor"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {coaching ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <Badge variant={coaching.source === provider ? "default" : "secondary"}>
+                        {coaching.source === provider ? `${provider === "grok" ? "Grok" : "Gemini"} AI` : "Algorithmic Fallback"}
+                      </Badge>
+                      {coaching.fromCache && <Badge variant="outline">Cached</Badge>}
+                      {coaching.fallbackUsed && <Badge variant="outline">Auto Fallback</Badge>}
+                      <Badge variant="outline">{coaching.modelUsed}</Badge>
+                      <span className="text-muted-foreground">
+                        {new Date(coaching.generatedAt).toLocaleString()}
+                      </span>
                     </div>
-                    <p className="text-sm">{item.message}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Action Plan</p>
-                {coaching.recommendations.map((item, index) => (
-                  <div key={index} className="flex items-start gap-3 rounded-2xl border border-primary/10 bg-primary/5 p-3 text-sm">
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                      {index + 1}
-                    </span>
-                    <p>{item}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Click Analyze My Trading to generate AI coaching suggestions. If AI is unavailable, fallback insights are shown automatically.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+                    {coaching.providerMessage ? (
+                      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                        Provider note: {coaching.providerMessage}
+                      </div>
+                    ) : null}
+                    {coaching.mentorSummary ? (
+                      <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Mentor Summary</p>
+                        <p className="mt-2 text-sm">{coaching.mentorSummary}</p>
+                      </div>
+                    ) : null}
+                    {coaching.priorityFocus ? (
+                      <div className="rounded-2xl border border-border bg-card p-3">
+                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Priority Focus
+                        </div>
+                        <p className="text-sm font-medium">{coaching.priorityFocus}</p>
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      {coaching.insights.map((item, index) => (
+                        <div key={index} className="rounded-2xl border border-border bg-card p-3">
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {insightLabel(item.type)}
+                          </div>
+                          <p className="text-sm">{item.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {(coaching.sessionPlan || []).length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Next Session Plan</p>
+                        {(coaching.sessionPlan || []).map((item, index) => (
+                          <div key={index} className="rounded-2xl border border-border bg-card p-3 text-sm">
+                            {index + 1}. {item}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Action Plan</p>
+                      {coaching.recommendations.map((item, index) => (
+                        <div key={index} className="flex items-start gap-3 rounded-2xl border border-primary/10 bg-primary/5 p-3 text-sm">
+                          <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {index + 1}
+                          </span>
+                          <p>{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {(coaching.reviewChecklist || []).length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Review Checklist</p>
+                        {(coaching.reviewChecklist || []).map((item, index) => (
+                          <div key={index} className="rounded-2xl border border-border bg-muted/30 p-3 text-sm">
+                            {index + 1}. {item}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Click Analyze My Trading to generate {provider === "grok" ? "Grok" : "Gemini"} coaching suggestions.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 page-fade-in stagger-1">
         <Card>

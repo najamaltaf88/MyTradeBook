@@ -5,7 +5,7 @@ import {
   resolveTradingSessionFromUtcHour,
 } from "@shared/constants";
 
-export type TradingStyle = "scalping" | "intraday" | "swing";
+export type TradingStyle = "all" | "scalping" | "intraday" | "swing";
 export type TradeGrade = "A+" | "A" | "B" | "C" | "D" | "F";
 type RiskGrade = "A" | "B" | "C" | "D" | "F";
 type SessionName = TradingSessionName;
@@ -63,6 +63,12 @@ export interface TradeAnalysis {
 
 export interface PortfolioAnalysis {
   style: TradingStyle;
+  styleScope: {
+    requestedStyle: TradingStyle;
+    matchedTrades: number;
+    totalTrades: number;
+    classification: "all_trades" | "keyword_then_duration";
+  };
   generatedAt: string;
   performanceScore: number;
   componentScores: {
@@ -170,6 +176,18 @@ type TradeContext = {
 };
 
 const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
+  all: {
+    style: "all",
+    minRrStrong: 1.4,
+    minRrAcceptable: 1.0,
+    durationIdealMinSec: 5 * 60,
+    durationIdealMaxSec: 24 * 60 * 60,
+    durationSoftMinSec: 60,
+    durationSoftMaxSec: 14 * 24 * 60 * 60,
+    revengeWindowSec: 45 * 60,
+    overtradingLimit: 8,
+    preferredSessions: ["London", "London/NY Overlap", "New York"],
+  },
   scalping: {
     style: "scalping",
     minRrStrong: 1.2,
@@ -210,10 +228,10 @@ const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
 
 export function normalizeTradingStyle(input?: string): TradingStyle {
   const raw = String(input || "").trim().toLowerCase();
-  if (raw === "scalping" || raw === "intraday" || raw === "swing") {
+  if (raw === "all" || raw === "scalping" || raw === "intraday" || raw === "swing") {
     return raw;
   }
-  return "intraday";
+  return "all";
 }
 
 function getProfile(input?: string): StyleProfile {
@@ -275,6 +293,42 @@ function tradeDurationSec(trade: Trade): number | null {
   if (!open || !close) return null;
   const diff = Math.floor((close.getTime() - open.getTime()) / 1000);
   return diff > 0 ? diff : null;
+}
+
+function inferTradingStyleFromText(trade: Trade): TradingStyle | null {
+  const source = [trade.comment, trade.reason, trade.logic]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+
+  if (!source) return null;
+  if (/\bscalp(?:ing)?\b/.test(source)) return "scalping";
+  if (/\bswing\b/.test(source)) return "swing";
+  if (/\bintraday\b|\bday\s*trade\b/.test(source)) return "intraday";
+  return null;
+}
+
+export function inferTradingStyleForTrade(trade: Trade): TradingStyle {
+  const tagged = inferTradingStyleFromText(trade);
+  if (tagged) return tagged;
+
+  const duration = tradeDurationSec(trade);
+  if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
+    if (duration <= STYLE_PROFILES.scalping.durationSoftMaxSec) return "scalping";
+    if (duration <= STYLE_PROFILES.intraday.durationSoftMaxSec) return "intraday";
+    return "swing";
+  }
+
+  return "intraday";
+}
+
+export function filterTradesByStyle(
+  trades: Trade[],
+  style?: TradingStyle | string,
+): Trade[] {
+  const normalizedStyle = normalizeTradingStyle(style);
+  if (normalizedStyle === "all") return trades;
+  return trades.filter((trade) => inferTradingStyleForTrade(trade) === normalizedStyle);
 }
 
 function tradeSession(trade: Trade): SessionName {
@@ -1202,8 +1256,9 @@ export function analyzePortfolio(
   options: AnalyzePortfolioOptions = {},
 ): PortfolioAnalysis {
   const profile = getProfile(options.style);
-  const context = buildTradeContext(trades);
-  const tradeAnalyses = trades.map((trade) =>
+  const scopedTrades = filterTradesByStyle(trades, profile.style);
+  const context = buildTradeContext(scopedTrades);
+  const tradeAnalyses = scopedTrades.map((trade) =>
     analyzeTradeWithContext(trade, context, profile),
   );
 
@@ -1501,6 +1556,12 @@ export function analyzePortfolio(
 
   return {
     style: profile.style,
+    styleScope: {
+      requestedStyle: profile.style,
+      matchedTrades: scopedTrades.length,
+      totalTrades: trades.length,
+      classification: profile.style === "all" ? "all_trades" : "keyword_then_duration",
+    },
     generatedAt: new Date().toISOString(),
     performanceScore,
     componentScores: {

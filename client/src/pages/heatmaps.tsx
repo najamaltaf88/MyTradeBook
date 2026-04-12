@@ -79,28 +79,28 @@ export function HeatmapsPage() {
         <div className="grid grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600">Total Trades</p>
+              <p className="text-sm text-muted-foreground">Total Trades</p>
               <p className="text-2xl font-bold">{heatmap.metadata.totalTrades}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600">Total Profit</p>
-              <p className={`text-2xl font-bold ${heatmap.metadata.totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+              <p className="text-sm text-muted-foreground">Total Profit</p>
+              <p className={`text-2xl font-bold ${heatmap.metadata.totalProfit >= 0 ? "text-profit" : "text-loss"}`}>
                 ${heatmap.metadata.totalProfit.toFixed(0)}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600">Positive Setups</p>
-              <p className="text-2xl font-bold text-green-600">{heatmap.metadata.positiveSetups}</p>
+              <p className="text-sm text-muted-foreground">Positive Setups</p>
+              <p className="text-2xl font-bold text-profit">{heatmap.metadata.positiveSetups}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600">Negative Setups</p>
-              <p className="text-2xl font-bold text-red-600">{heatmap.metadata.negativeSetups}</p>
+              <p className="text-sm text-muted-foreground">Negative Setups</p>
+              <p className="text-2xl font-bold text-loss">{heatmap.metadata.negativeSetups}</p>
             </CardContent>
           </Card>
         </div>
@@ -124,7 +124,7 @@ export function HeatmapsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm">{entry.winRate.toFixed(1)}%</span>
-                      <div className="flex-1 bg-gray-200 rounded h-2">
+                      <div className="flex-1 bg-muted rounded h-2">
                         <div
                           className="bg-green-500 h-2 rounded"
                           style={{ width: `${entry.winRate * 100}%` }}
@@ -134,7 +134,7 @@ export function HeatmapsPage() {
                   </div>
                   <div className="text-right min-w-24">
                     <p className="font-semibold text-sm">{entry.trades} trades</p>
-                    <p className={`text-sm font-bold ${entry.profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <p className={`text-sm font-bold ${entry.profit >= 0 ? "text-profit" : "text-loss"}`}>
                       ${entry.profit.toFixed(0)}
                     </p>
                   </div>
@@ -146,29 +146,29 @@ export function HeatmapsPage() {
 
         {/* Best/Worst */}
         <div className="grid md:grid-cols-2 gap-4">
-          <Card className="border-green-200 bg-green-50">
+          <Card className="border-emerald-500/20 bg-emerald-500/10">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp size={18} className="text-green-600" /> Best Setup
+                <TrendingUp size={18} className="text-profit" /> Best Setup
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{heatmap.metadata.bestSetup.key}</p>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {(heatmap.metadata.bestSetup.winRate * 100).toFixed(1)}% win rate - Focus here!
               </p>
             </CardContent>
           </Card>
 
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-red-500/20 bg-red-500/10">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingDown size={18} className="text-red-600" /> Worst Setup
+                <TrendingDown size={18} className="text-loss" /> Worst Setup
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{heatmap.metadata.worstSetup.key}</p>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {(heatmap.metadata.worstSetup.winRate * 100).toFixed(1)}% win rate - Avoid this
               </p>
             </CardContent>
@@ -181,23 +181,23 @@ export function HeatmapsPage() {
   if (loading)
     return (
       <div className="flex justify-center items-center h-96">
-        <p className="text-gray-500">Loading heatmaps...</p>
+        <p className="text-muted-foreground">Loading heatmaps...</p>
       </div>
     );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-bold">Performance Heatmaps</h1>
-        <p className="text-gray-600">Visual analysis of trading patterns to focus on best setups</p>
+        <p className="text-muted-foreground">Visual analysis of trading patterns to focus on best setups</p>
       </div>
 
       {/* Insights */}
       {insights.length > 0 && (
-        <Card className="bg-blue-50 border-blue-200">
+        <Card className="border-primary/20 bg-primary/10">
           <CardHeader className="flex-row justify-between items-start pb-2">
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle /> Key Insights
+              <AlertCircle className="text-primary" /> Key Insights
             </CardTitle>
           </CardHeader>
           <CardContent>

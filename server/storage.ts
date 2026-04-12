@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { promises as fsp } from "fs";
 import { Logger } from "./logging";
 import { decrypt, encrypt } from "./crypto";
 import type {
@@ -512,6 +513,67 @@ class LocalDbStore {
     }
   }
 
+  private async maybeBackupCurrentDataAsync() {
+    if (!fs.existsSync(this.filePath)) return;
+    const now = Date.now();
+    if (now - this.lastBackupAt < this.backupIntervalMs) return;
+
+    await fsp.mkdir(this.backupDir, { recursive: true });
+    const stamp = new Date(now).toISOString().replace(/[:.]/g, "-");
+    const backupFile = path.join(this.backupDir, `data-${stamp}.json`);
+    await fsp.copyFile(this.filePath, backupFile);
+    this.lastBackupAt = now;
+
+    const backups = (await fsp.readdir(this.backupDir))
+      .filter((name) => name.endsWith(".json"))
+      .sort((a, b) => a.localeCompare(b));
+
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    const remaining: string[] = [];
+    for (const name of backups) {
+      const target = path.join(this.backupDir, name);
+      try {
+        const stat = await fsp.stat(target);
+        if (stat.mtimeMs < cutoff) {
+          await fsp.unlink(target);
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      remaining.push(name);
+    }
+
+    const removeCount = Math.max(0, remaining.length - this.maxBackups);
+    for (let i = 0; i < removeCount; i++) {
+      const filename = remaining[i];
+      if (!filename) continue;
+      const target = path.join(this.backupDir, filename);
+      try {
+        await fsp.unlink(target);
+      } catch {
+        // Best effort.
+      }
+    }
+  }
+
+  private async persistAsync() {
+    if (!this.data) return;
+    const tmpPath = this.filePath + ".tmp";
+    try {
+      await this.maybeBackupCurrentDataAsync();
+      await fsp.writeFile(tmpPath, JSON.stringify(this.data, null, 2), "utf8");
+      await fsp.rename(tmpPath, this.filePath);
+    } catch (error) {
+      try {
+        await fsp.unlink(tmpPath);
+      } catch {
+        // Best effort cleanup.
+      }
+      throw error;
+    }
+  }
+
   read(): LocalDatabase {
     this.ensureLoaded();
     return this.data!;
@@ -527,7 +589,7 @@ class LocalDbStore {
     const nextWrite = this.writeQueue.then(() => {
       this.ensureLoaded();
       mutator(this.data!);
-      this.persist();
+      return this.persistAsync();
     });
 
     this.writeQueue = nextWrite.catch(() => {});
