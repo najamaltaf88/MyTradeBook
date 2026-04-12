@@ -126,6 +126,24 @@ type TradesQueryResponse = {
   totalPages: number;
 };
 
+function normalizeTradesPayload(payload: unknown): Trade[] {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Trade => isTradeRecord(item));
+  }
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return ((payload as { data: unknown[] }).data || []).filter(
+      (item): item is Trade => isTradeRecord(item),
+    );
+  }
+
+  return [];
+}
+
 function isTradeRecord(value: unknown): value is Trade {
   return Boolean(
     value &&
@@ -1033,7 +1051,8 @@ function TradesPageInner() {
     queryFn: async () => {
       const res = await fetch(`/api/trades${queryParam}`);
       if (!res.ok) throw new Error("Failed to fetch trades");
-      return res.json();
+      const payload = (await res.json()) as unknown;
+      return normalizeTradesPayload(payload);
     },
   });
 

@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { createHash } from "crypto";
 import { z } from "zod";
 
@@ -231,7 +233,39 @@ function extractJson(content: string): string {
 
 function sanitizeProviderMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || "Unknown provider error");
-  return message.replace(/gsk_[A-Za-z0-9_-]+/g, "[redacted-key]");
+  const sanitized = message.replace(/gsk_[A-Za-z0-9_-]+/g, "[redacted-key]");
+
+  if (/API key not configured/i.test(sanitized)) {
+    return "AI provider is unavailable because its API key is not configured. Internal coaching fallback is being used.";
+  }
+
+  return sanitized;
+}
+
+function findNearestEnvPath(): string | undefined {
+  const explicitCandidates = [
+    process.env.DOTENV_CONFIG_PATH,
+    process.env.MYTRADEBOOK_ENV_PATH,
+    path.join(process.cwd(), ".env"),
+    path.join(path.dirname(process.execPath || ""), ".env"),
+    path.join(process.resourcesPath || "", ".env"),
+    path.join(__dirname, "..", ".env"),
+    path.join(__dirname, "..", "..", ".env"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const envPath of explicitCandidates) {
+    if (fs.existsSync(envPath)) return envPath;
+  }
+
+  let currentDir = process.cwd();
+  while (true) {
+    const envPath = path.join(currentDir, ".env");
+    if (fs.existsSync(envPath)) return envPath;
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+  return undefined;
 }
 
 function resolveGrokApiKey(): string | undefined {
@@ -243,7 +277,27 @@ function resolveGrokApiKey(): string | undefined {
   ]
     .map((item) => (item || "").trim().replace(/^['"]|['"]$/g, ""))
     .find(Boolean);
-  return direct || undefined;
+
+  if (direct) return direct;
+
+  const envPath = findNearestEnvPath();
+  if (!envPath) return undefined;
+
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    for (const key of ["GROK_API_KEY", "grokAPI_key", "XAI_API_KEY"]) {
+      const regex = new RegExp(`^${key}\\s*[:=]\\s*(.+)$`, "i");
+      const match = trimmed.match(regex);
+      if (!match?.[1]) continue;
+      const value = trimmed.match(/['"]?(.*?)['"]?$/)?.[1]?.trim() || "";
+      if (!value) continue;
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function resolveGeminiApiKey(): string | undefined {
@@ -253,7 +307,27 @@ function resolveGeminiApiKey(): string | undefined {
   ]
     .map((item) => (item || "").trim().replace(/^['"]|['"]$/g, ""))
     .find(Boolean);
-  return direct || undefined;
+
+  if (direct) return direct;
+
+  const envPath = findNearestEnvPath();
+  if (!envPath) return undefined;
+
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    for (const key of ["GEMINI_API_KEY", "GOOGLE_API_KEY"]) {
+      const regex = new RegExp(`^${key}\\s*[:=]\\s*(.+)$`, "i");
+      const match = trimmed.match(regex);
+      if (!match?.[1]) continue;
+      const value = trimmed.match(/['"]?(.*?)['"]?$/)?.[1]?.trim() || "";
+      if (!value) continue;
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function describeTheme(title: string): string {

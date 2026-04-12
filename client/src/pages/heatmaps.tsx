@@ -34,6 +34,47 @@ interface HeatmapMetrics {
   };
 }
 
+function defaultHeatmapMetrics(type: HeatmapMetrics["type"]): HeatmapMetrics {
+  return {
+    type,
+    period: "all",
+    data: {},
+    metadata: {
+      totalTrades: 0,
+      totalProfit: 0,
+      positiveSetups: 0,
+      negativeSetups: 0,
+      bestSetup: { key: "-", winRate: 0 },
+      worstSetup: { key: "-", winRate: 0 },
+    },
+  };
+}
+
+function normalizeHeatmapPayload(payload: unknown, type: HeatmapMetrics["type"]): HeatmapMetrics {
+  const fallback = defaultHeatmapMetrics(type);
+  if (!payload || typeof payload !== "object") return fallback;
+
+  const incoming = payload as Partial<HeatmapMetrics>;
+  return {
+    ...fallback,
+    ...incoming,
+    type,
+    data: incoming.data && typeof incoming.data === "object" ? incoming.data : {},
+    metadata: {
+      ...fallback.metadata,
+      ...(incoming.metadata || {}),
+      bestSetup: {
+        ...fallback.metadata.bestSetup,
+        ...(incoming.metadata?.bestSetup || {}),
+      },
+      worstSetup: {
+        ...fallback.metadata.worstSetup,
+        ...(incoming.metadata?.worstSetup || {}),
+      },
+    },
+  };
+}
+
 export function HeatmapsPage() {
   const { toast } = useToast();
   const [heatmaps, setHeatmaps] = useState<Record<string, HeatmapMetrics>>({});
@@ -51,8 +92,8 @@ export function HeatmapsPage() {
 
       for (const type of types) {
         const response = await fetch(`/api/heatmaps/${type}`);
-        const heatmapData = await response.json();
-        data[type] = heatmapData;
+        const heatmapData = (await response.json()) as unknown;
+        data[type] = normalizeHeatmapPayload(heatmapData, type as HeatmapMetrics["type"]);
       }
 
       setHeatmaps(data);

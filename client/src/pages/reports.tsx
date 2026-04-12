@@ -89,6 +89,60 @@ interface ReportData {
   }[];
 }
 
+function normalizeReportPayload(payload: unknown): ReportData {
+  const nowIso = new Date().toISOString();
+  const empty: ReportData = {
+    period: "weekly",
+    periodLabel: "Weekly Report",
+    startDate: nowIso,
+    endDate: nowIso,
+    generatedAt: nowIso,
+    summary: {
+      totalTrades: 0,
+      wins: 0,
+      losses: 0,
+      breakeven: 0,
+      winRate: 0,
+      grossProfit: 0,
+      grossLoss: 0,
+      netProfit: 0,
+      totalCommission: 0,
+      totalSwap: 0,
+      avgWin: 0,
+      avgLoss: 0,
+      profitFactor: 0,
+      bestTrade: null,
+      worstTrade: null,
+    },
+    symbolBreakdown: [],
+    dailyBreakdown: [],
+    emotionSummary: [],
+    journalRate: 0,
+    goalCompliance: null,
+    ruleCompliance: [],
+    suggestions: [],
+    trades: [],
+  };
+
+  if (!payload || typeof payload !== "object") return empty;
+  const incoming = payload as Partial<ReportData>;
+
+  return {
+    ...empty,
+    ...incoming,
+    summary: {
+      ...empty.summary,
+      ...(incoming.summary || {}),
+    },
+    symbolBreakdown: Array.isArray(incoming.symbolBreakdown) ? incoming.symbolBreakdown : [],
+    dailyBreakdown: Array.isArray(incoming.dailyBreakdown) ? incoming.dailyBreakdown : [],
+    emotionSummary: Array.isArray(incoming.emotionSummary) ? incoming.emotionSummary : [],
+    ruleCompliance: Array.isArray(incoming.ruleCompliance) ? incoming.ruleCompliance : [],
+    suggestions: Array.isArray(incoming.suggestions) ? incoming.suggestions : [],
+    trades: Array.isArray(incoming.trades) ? incoming.trades : [],
+  };
+}
+
 function formatTzDate(date: string, tz: string = "UTC") {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -361,7 +415,8 @@ export default function ReportsPage() {
       }
       const res = await fetch(`/api/reports?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to generate report");
-      return res.json();
+      const payload = (await res.json()) as unknown;
+      return normalizeReportPayload(payload);
     },
   });
 

@@ -161,9 +161,6 @@ const CachedResultSchema = z.object({
   providerMessage: z.string().optional(),
 });
 
-let cachedEnvApiKey: string | null | undefined;
-let cachedGeminiApiKey: string | null | undefined;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -301,11 +298,33 @@ function sanitizeEnvValue(value: string): string {
   return value.trim().replace(/^['"]|['"]$/g, "");
 }
 
-function resolveGrokApiKey(): string | undefined {
-  if (cachedEnvApiKey !== undefined) {
-    return cachedEnvApiKey || undefined;
+function findNearestEnvPath(): string | undefined {
+  const explicitCandidates = [
+    process.env.DOTENV_CONFIG_PATH,
+    process.env.MYTRADEBOOK_ENV_PATH,
+    path.join(process.cwd(), ".env"),
+    path.join(path.dirname(process.execPath || ""), ".env"),
+    path.join(process.resourcesPath || "", ".env"),
+    path.join(__dirname, "..", ".env"),
+    path.join(__dirname, "..", "..", ".env"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const envPath of explicitCandidates) {
+    if (fs.existsSync(envPath)) return envPath;
   }
 
+  let currentDir = process.cwd();
+  while (true) {
+    const envPath = path.join(currentDir, ".env");
+    if (fs.existsSync(envPath)) return envPath;
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) break;
+    currentDir = parentDir;
+  }
+  return undefined;
+}
+
+function resolveGrokApiKey(): string | undefined {
   const direct = [
     process.env.GROK_API_KEY,
     process.env.GROK_APIKEY,
@@ -316,13 +335,11 @@ function resolveGrokApiKey(): string | undefined {
     .find((item) => Boolean(item));
 
   if (direct) {
-    cachedEnvApiKey = direct;
     return direct;
   }
 
-  const envPath = path.join(process.cwd(), ".env");
-  if (!fs.existsSync(envPath)) {
-    cachedEnvApiKey = null;
+  const envPath = findNearestEnvPath();
+  if (!envPath) {
     return undefined;
   }
 
@@ -336,20 +353,14 @@ function resolveGrokApiKey(): string | undefined {
       if (!match?.[1]) continue;
       const value = sanitizeEnvValue(match[1]);
       if (!value) continue;
-      cachedEnvApiKey = value;
       return value;
     }
   }
 
-  cachedEnvApiKey = null;
   return undefined;
 }
 
 function resolveGeminiApiKey(): string | undefined {
-  if (cachedGeminiApiKey !== undefined) {
-    return cachedGeminiApiKey || undefined;
-  }
-
   const direct = [
     process.env.GEMINI_API_KEY,
     process.env.GOOGLE_API_KEY,
@@ -358,13 +369,11 @@ function resolveGeminiApiKey(): string | undefined {
     .find((item) => Boolean(item));
 
   if (direct) {
-    cachedGeminiApiKey = direct;
     return direct;
   }
 
-  const envPath = path.join(process.cwd(), ".env");
-  if (!fs.existsSync(envPath)) {
-    cachedGeminiApiKey = null;
+  const envPath = findNearestEnvPath();
+  if (!envPath) {
     return undefined;
   }
 
@@ -378,12 +387,10 @@ function resolveGeminiApiKey(): string | undefined {
       if (!match?.[1]) continue;
       const value = sanitizeEnvValue(match[1]);
       if (!value) continue;
-      cachedGeminiApiKey = value;
       return value;
     }
   }
 
-  cachedGeminiApiKey = null;
   return undefined;
 }
 
@@ -465,10 +472,16 @@ function formatPromptFlagLabel(value: boolean | null): string {
 }
 
 function sanitizeProviderMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error || "Unknown Grok error");
-  return message
+  const message = error instanceof Error ? error.message : String(error || "Unknown AI provider error");
+  const sanitized = message
     .replace(/gsk_[A-Za-z0-9_-]+/g, "[redacted-key]")
     .replace(/Incorrect API key provided:\s*[^.]+/i, "Incorrect API key provided");
+
+  if (/API key not configured/i.test(sanitized)) {
+    return "AI provider is unavailable because its API key is not configured. Internal coaching fallback is being used.";
+  }
+
+  return sanitized;
 }
 
 export class AIAnalysisService {

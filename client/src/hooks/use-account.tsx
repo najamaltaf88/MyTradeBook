@@ -21,9 +21,15 @@ const AccountContext = createContext<AccountContextType>({
 export function AccountProvider({ children }: { children: React.ReactNode }) {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  const { data: accounts = [] } = useQuery<Mt5Account[]>({
+  const { data: rawAccounts } = useQuery<Mt5Account[] | { data?: Mt5Account[] }>({
     queryKey: ["/api/accounts"],
   });
+
+  const accounts = Array.isArray(rawAccounts)
+    ? rawAccounts
+    : Array.isArray(rawAccounts?.data)
+    ? rawAccounts.data
+    : [];
 
   const selectedAccount = selectedAccountId
     ? accounts.find((a) => a.id === selectedAccountId) || null

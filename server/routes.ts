@@ -84,6 +84,7 @@ function requireAppHeader(req: Request, res: Response, next: NextFunction) {
 }
 
 async function supabaseAuth(req: Request, res: Response, next: NextFunction) {
+  if (process.env.FORCE_LOCAL_AUTH_BYPASS === "true") return next();
   if (!supabaseEnabled) return next();
 
   const openPaths = [

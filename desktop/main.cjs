@@ -8,10 +8,22 @@ const dotenv = require("dotenv");
 let mainWindow = null;
 let backendPort = null;
 
+function writeStartupLog(message) {
+  try {
+    const logPath = path.join(app.getPath("userData"), "startup.log");
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    fs.appendFileSync(logPath, line, "utf8");
+  } catch {
+    // Best effort logging only.
+  }
+}
+
 function loadRuntimeEnv() {
   const userDataEnv = path.join(app.getPath("userData"), ".env");
   const exeDirEnv = path.join(path.dirname(process.execPath), ".env");
   const cwdEnv = path.join(process.cwd(), ".env");
+  const appPathEnv = path.join(app.getAppPath(), ".env");
+  const resourcesEnv = path.join(process.resourcesPath || "", ".env");
   const localDataDir = path.join(app.getPath("userData"), "data");
   const localUploadsDir = path.join(app.getPath("userData"), "uploads");
 
@@ -26,9 +38,15 @@ function loadRuntimeEnv() {
     fs.writeFileSync(userDataEnv, content, "utf8");
   }
 
-  [cwdEnv, exeDirEnv, userDataEnv].forEach((envFile) => {
+  const envFiles = [cwdEnv, exeDirEnv, appPathEnv, resourcesEnv, userDataEnv]
+    .filter(Boolean)
+    .filter((envFile, index, list) => list.indexOf(envFile) === index);
+
+  envFiles.forEach((envFile, index) => {
     if (fs.existsSync(envFile)) {
-      dotenv.config({ path: envFile, override: false });
+      // Keep earlier env values stable, but allow userData/.env to take priority for user overrides.
+      const isUserDataEnv = index === envFiles.length - 1 && envFile === userDataEnv;
+      dotenv.config({ path: envFile, override: isUserDataEnv });
     }
   });
 }
@@ -67,6 +85,33 @@ function migrateLegacyUploads(targetDir) {
       } catch {
         // Best effort migration for legacy screenshots.
       }
+    }
+  }
+}
+
+function migrateLegacyData(targetDir) {
+  if (!app.isPackaged) return;
+
+  const targetFile = path.join(targetDir, "data.json");
+  if (fs.existsSync(targetFile)) return;
+
+  const candidates = [
+    path.join(path.dirname(process.execPath), ".mytradebook-data", "data.json"),
+    path.join(process.resourcesPath || "", ".mytradebook-data", "data.json"),
+    path.join(process.cwd(), ".mytradebook-data", "data.json"),
+  ]
+    .filter(Boolean)
+    .filter((filePath, index, list) => list.indexOf(filePath) === index);
+
+  for (const sourceFile of candidates) {
+    if (!fs.existsSync(sourceFile)) continue;
+    try {
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.copyFileSync(sourceFile, targetFile);
+      writeStartupLog(`Migrated legacy data from ${sourceFile}`);
+      return;
+    } catch {
+      // Keep trying next candidate.
     }
   }
 }
@@ -146,6 +191,7 @@ async function resolveBackendPort(preferredPort) {
 }
 
 async function startBackend() {
+  writeStartupLog("Starting backend");
   loadRuntimeEnv();
 
   const configuredPort = parseInt(process.env.PORT || "5000", 10);
@@ -156,11 +202,15 @@ async function startBackend() {
 
   process.env.PORT = String(port);
   process.env.NODE_ENV = "production";
+  process.env.FORCE_LOCAL_STORAGE = "true";
+  process.env.FORCE_LOCAL_AUTH_BYPASS = "true";
+  process.env.LOCAL_USER_ID = process.env.LOCAL_USER_ID || "local-user";
   process.env.LOCAL_DATA_DIR = process.env.LOCAL_DATA_DIR || fallbackDataDir;
   process.env.LOCAL_UPLOADS_DIR = process.env.LOCAL_UPLOADS_DIR || fallbackUploadsDir;
   process.env.FORCE_INSECURE_COOKIE = "true";
   fs.mkdirSync(process.env.LOCAL_DATA_DIR, { recursive: true });
   fs.mkdirSync(process.env.LOCAL_UPLOADS_DIR, { recursive: true });
+  migrateLegacyData(process.env.LOCAL_DATA_DIR);
   migrateLegacyUploads(process.env.LOCAL_UPLOADS_DIR);
 
   try {
@@ -173,23 +223,24 @@ async function startBackend() {
   require(serverEntry);
 
   await waitForServer(port);
+  writeStartupLog(`Backend ready on port ${port}`);
   return port;
 }
 
-  function createWindow(port) {
+function createWindow(port) {
     mainWindow = new BrowserWindow({
       width: 1440,
       height: 920,
       minWidth: 920,
       minHeight: 640,
-      show: false,
+      show: true,
       autoHideMenuBar: true,
-    backgroundColor: "#0b0f19",
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-    },
+      backgroundColor: "#0b0f19",
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
   });
 
   const url = `http://127.0.0.1:${port}`;
@@ -204,8 +255,24 @@ async function startBackend() {
   });
 
   mainWindow.once("ready-to-show", () => {
+    if (!mainWindow) return;
     mainWindow.show();
+    mainWindow.focus();
   });
+
+  mainWindow.webContents.once("did-finish-load", () => {
+    if (!mainWindow) return;
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  setTimeout(() => {
+    if (!mainWindow) return;
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, 5000);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -230,6 +297,7 @@ if (!hasSingleInstanceLock) {
       createWindow(backendPort);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      writeStartupLog(`Startup failed: ${message}`);
       dialog.showErrorBox(
         "MyTradebook Startup Failed",
         `Could not start local server.\n\n${message}\n\nSet LOCAL_DATA_DIR, then retry.`,

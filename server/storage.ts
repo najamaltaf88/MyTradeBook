@@ -686,8 +686,10 @@ class SupabaseDbStore {
   }
 }
 
+const forceLocalStorage = process.env.FORCE_LOCAL_STORAGE === "true";
+
 const localDb: Pick<LocalDbStore, "read" | "write" | "writeQueued"> & { init?: () => Promise<void> } =
-  supabaseEnabled ? new SupabaseDbStore() : new LocalDbStore();
+  forceLocalStorage || !supabaseEnabled ? new LocalDbStore() : new SupabaseDbStore();
 
 export async function initStorage() {
   if (localDb.init) {

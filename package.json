@@ -120,6 +120,7 @@
       "dist/**/*",
       "desktop/**/*",
       "public/**/*",
+      ".env",
       "package.json"
     ],
     "asar": true,
@@ -137,6 +138,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "packElevateHelper": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }

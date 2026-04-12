@@ -131,6 +131,18 @@ interface ReflectionSuggestion {
   category: "discipline" | "execution" | "risk" | "mindset";
 }
 
+function normalizeTradesResponse(payload: unknown): Trade[] {
+  if (Array.isArray(payload)) return payload as Trade[];
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: Trade[] }).data;
+  }
+  return [];
+}
+
 function tradeNetPnl(trade: Trade): number {
   return (trade.profit ?? 0) + (trade.commission ?? 0) + (trade.swap ?? 0);
 }
@@ -398,11 +410,12 @@ export default function ProfessionalDashboard() {
     weaknesses: "",
   });
 
-  const { data: trades } = useQuery({
+  const { data: trades } = useQuery<Trade[]>({
     queryKey: ["/api/trades", selectedAccountId ?? "__all__"],
     queryFn: async () => {
       const res = await fetch(`/api/trades${queryParam}`);
-      return res.json() as Promise<Trade[]>;
+      const payload = (await res.json()) as unknown;
+      return normalizeTradesResponse(payload);
     },
   });
 
