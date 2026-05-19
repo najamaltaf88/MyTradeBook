@@ -14,11 +14,10 @@ import {
   FileText,
   Newspaper,
   Brain,
+  HeartPulse,
   Globe,
   Zap,
-  Bell,
-  Grid3x3,
-  CheckSquare,
+  Percent,
   LineChart,
   MessageCircle,
   LogOut,
@@ -54,7 +53,7 @@ const mainItems = [
   { title: "Notes", url: "/notes", icon: MessageCircle },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "AI Insights", url: "/ai-insights", icon: Brain },
-  { title: "Psychology", url: "/psychology", icon: Brain },
+  { title: "Psychology", url: "/psychology", icon: HeartPulse },
   { title: "Risk Analysis", url: "/risk", icon: TrendingUp },
   { title: "Strategy Edge", url: "/strategy-edge", icon: Zap },
   { title: "Calendar", url: "/calendar", icon: Newspaper },
@@ -62,17 +61,12 @@ const mainItems = [
 ];
 
 const toolsItems = [
+  { title: "Margin Calculator", url: "/margin-calculator", icon: Percent },
   { title: "Risk Calculator", url: "/risk-calculator", icon: Calculator },
-  { title: "Crypto Charts", url: "/crypto-charts", icon: LineChart },
   { title: "Playbook", url: "/playbook", icon: ClipboardList },
   { title: "Goals", url: "/goals", icon: Trophy },
   { title: "Reports", url: "/reports", icon: FileText },
-];
-
-const professionalsItems = [
-  { title: "Alerts", url: "/alerts", icon: Bell },
-  { title: "Compliance", url: "/compliance", icon: CheckSquare },
-  { title: "Heatmaps", url: "/heatmaps", icon: Grid3x3 },
+  { title: "Crypto Charts", url: "/crypto-charts", icon: LineChart },
 ];
 
 export function AppSidebar() {
@@ -83,25 +77,27 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r-0 bg-transparent">
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-5">
+      <SidebarHeader className="border-b border-sidebar-border/80 px-4 py-5">
         <Link href="/">
           <div className="flex cursor-pointer items-center gap-3" data-testid="link-home">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] shadow-[0_16px_40px_rgba(14,165,233,0.26)]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[image:var(--gradient-primary)] shadow-[0_14px_32px_hsl(var(--primary)/0.28)]">
               <TrendingUp className="h-5 w-5 text-primary-foreground" />
             </div>
             <div className="min-w-0">
-              <div className="mb-1 inline-flex items-center rounded-full border border-sidebar-border bg-sidebar-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground">
-                Trading OS
+              <div className="mb-1 inline-flex items-center rounded-full border border-sidebar-primary/25 bg-sidebar-primary/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-sidebar-primary-foreground/95">
+                Forex journal
               </div>
               <h1 className="text-base font-semibold tracking-tight text-sidebar-foreground">MyTradebook</h1>
-              <p className="text-[11px] leading-none text-sidebar-foreground/70">Sharper journaling. Cleaner review loops.</p>
+              <p className="text-[11px] leading-snug text-sidebar-foreground/70">
+                Log pairs, sessions, and behavior next to every execution.
+              </p>
             </div>
           </div>
         </Link>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/60">Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/60">Core journal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainItems.map((item) => {
@@ -121,7 +117,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/60">Trading Tools</SidebarGroupLabel>
+          <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/60">Calculators &amp; planning</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {toolsItems.map((item) => {
@@ -140,29 +136,9 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/60">Professional Features</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {professionalsItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild data-active={isActive}>
-                      <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="space-y-3 border-t border-sidebar-border px-4 py-4">
-        <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent p-3 shadow-[0_16px_38px_rgba(2,6,23,0.18)]">
+        <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent p-3 shadow-[var(--ambient-shadow)]">
           <div className="mb-2 flex items-center gap-2 px-1">
             <Globe className="h-4 w-4 shrink-0 text-sidebar-foreground/80" />
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/80">Workspace Timezone</span>

@@ -153,9 +153,9 @@ function buildProviderFallback(provider: ProviderKey, error?: unknown): Coaching
 }
 
 function scoreColor(score: number) {
-  if (score >= 75) return "text-emerald-500";
-  if (score >= 55) return "text-amber-500";
-  return "text-red-500";
+  if (score >= 75) return "text-profit";
+  if (score >= 55) return "text-chart-4";
+  return "text-loss";
 }
 
 function gradeCounts(trades: TradeAnalysis[]) {
@@ -467,7 +467,7 @@ export default function AiInsightsPage() {
                       </span>
                     </div>
                     {coaching.providerMessage ? (
-                      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                      <div className="rounded-2xl border border-chart-4/25 bg-chart-4/10 p-3 text-sm text-foreground">
                         Provider note: {coaching.providerMessage}
                       </div>
                     ) : null}
@@ -558,7 +558,7 @@ export default function AiInsightsPage() {
         <Card>
           <CardContent className="p-4 space-y-1">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Win Rate</p>
-            <p className={cn("text-3xl font-bold font-mono", data.summary.winRate >= 50 ? "text-emerald-500" : "text-red-500")}>
+            <p className={cn("text-3xl font-bold font-mono", data.summary.winRate >= 50 ? "text-profit" : "text-loss")}>
               {data.summary.winRate.toFixed(1)}%
             </p>
             <p className="text-xs text-muted-foreground">{data.summary.wins}W / {data.summary.losses}L</p>
@@ -567,7 +567,7 @@ export default function AiInsightsPage() {
         <Card>
           <CardContent className="p-4 space-y-1">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit Factor</p>
-            <p className={cn("text-3xl font-bold font-mono", data.summary.profitFactor >= 1 ? "text-emerald-500" : "text-red-500")}>
+            <p className={cn("text-3xl font-bold font-mono", data.summary.profitFactor >= 1 ? "text-profit" : "text-loss")}>
               {data.summary.profitFactor.toFixed(2)}
             </p>
             <p className={cn("text-xs font-mono", getProfitColor(data.summary.netProfit))}>
@@ -611,7 +611,7 @@ export default function AiInsightsPage() {
             <div className="flex justify-between"><span>SL Usage</span><span className="font-mono">{data.riskManagement.slUsagePct.toFixed(1)}%</span></div>
             <div className="flex justify-between"><span>TP Usage</span><span className="font-mono">{data.riskManagement.tpUsagePct.toFixed(1)}%</span></div>
             <div className="flex justify-between"><span>Sizing Consistency</span><span className="font-mono">{data.riskManagement.sizingConsistencyPct.toFixed(1)}%</span></div>
-            <div className="flex justify-between"><span>Max Drawdown</span><span className="font-mono text-red-500">{formatCurrency(data.riskManagement.maxDrawdown)}</span></div>
+            <div className="flex justify-between"><span>Max Drawdown</span><span className="font-mono text-loss">{formatCurrency(data.riskManagement.maxDrawdown)}</span></div>
           </CardContent>
         </Card>
         <Card>

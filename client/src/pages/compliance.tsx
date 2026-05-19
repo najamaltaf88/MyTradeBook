@@ -75,12 +75,12 @@ export function CompliancePage() {
   };
 
   const scoreColors: Record<string, string> = {
-    "A+": "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    A: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    B: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    C: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    D: "border-orange-500/25 bg-orange-500/10 text-orange-700 dark:text-orange-300",
-    F: "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300",
+    "A+": "border-profit/40 bg-profit/10 text-profit",
+    A: "border-profit/40 bg-profit/10 text-profit",
+    B: "border-chart-2/40 bg-chart-2/10 text-chart-2",
+    C: "border-chart-4/40 bg-chart-4/10 text-chart-4",
+    D: "border-chart-5/40 bg-chart-5/10 text-chart-5",
+    F: "border-loss/40 bg-loss/10 text-loss",
   };
 
   if (loading && !metrics)
@@ -115,8 +115,8 @@ export function CompliancePage() {
       </div>
 
       {error ? (
-        <Card className="border-amber-500/20 bg-amber-500/10">
-          <CardContent className="p-4 text-sm text-amber-900 dark:text-amber-100">
+        <Card className="border-chart-4/25 bg-chart-4/10">
+          <CardContent className="p-4 text-sm text-foreground">
             Latest compliance snapshot dikh raha hai, lekin refresh ke waqt issue aya tha: {error}
           </CardContent>
         </Card>
@@ -225,19 +225,19 @@ export function CompliancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="rounded p-3 border border-red-500/20 bg-red-500/10">
-            <p className="font-semibold text-red-700 dark:text-red-300">Priority 1: Fix "{metrics.insights.worstFollowedRule}"</p>
-            <p className="text-sm text-red-700/90 dark:text-red-300 mt-1">You break this rule frequently. Identify barriers and focus here.</p>
+          <div className="rounded border border-loss/25 bg-loss/10 p-3">
+            <p className="font-semibold text-loss">Priority 1: Fix "{metrics.insights.worstFollowedRule}"</p>
+            <p className="mt-1 text-sm text-muted-foreground">You break this rule frequently. Identify barriers and focus here.</p>
           </div>
 
-          <div className="rounded p-3 border border-emerald-500/20 bg-emerald-500/10">
-            <p className="font-semibold text-emerald-700 dark:text-emerald-300">Strength: Master "{metrics.insights.bestFollowedRule}"</p>
-            <p className="text-sm text-emerald-700/90 dark:text-emerald-300 mt-1">You follow this rule consistently. Keep it up!</p>
+          <div className="rounded border border-profit/25 bg-profit/10 p-3">
+            <p className="font-semibold text-profit">Strength: Master "{metrics.insights.bestFollowedRule}"</p>
+            <p className="mt-1 text-sm text-muted-foreground">You follow this rule consistently. Keep it up!</p>
           </div>
 
-          <div className="rounded p-3 border border-blue-500/20 bg-blue-500/10">
-            <p className="font-semibold text-blue-700 dark:text-blue-300">Opportunity: Leverage "{metrics.insights.mostCorrelatedToProfits}"</p>
-            <p className="text-sm text-blue-700/90 dark:text-blue-300 mt-1">Following this rule correlates with profits. Make it a focus.</p>
+          <div className="rounded border border-primary/25 bg-primary/10 p-3">
+            <p className="font-semibold text-primary">Opportunity: Leverage "{metrics.insights.mostCorrelatedToProfits}"</p>
+            <p className="mt-1 text-sm text-muted-foreground">Following this rule correlates with profits. Make it a focus.</p>
           </div>
         </CardContent>
       </Card>

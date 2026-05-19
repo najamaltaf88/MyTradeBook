@@ -122,7 +122,7 @@ export function PDFExportPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Generate PDF Report</h1>
-        <p className="text-gray-600">Create professional trading reports for clients, coaches, or personal use</p>
+        <p className="text-muted-foreground">Create professional trading reports for clients, coaches, or personal use</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
@@ -137,10 +137,10 @@ export function PDFExportPage() {
               {reportTemplates.map((template) => (
                 <div
                   key={template.name}
-                  className={`border rounded-lg p-4 cursor-pointer transition ${
+                  className={`cursor-pointer rounded-lg border p-4 transition ${
                     selectedTemplate === template.name
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
+                      ? "border-primary bg-primary/8 shadow-sm"
+                      : "border-border hover:border-primary/35 hover:bg-muted/30"
                   }`}
                   onClick={() => {
                     setSelectedTemplate(template.name);
@@ -148,8 +148,8 @@ export function PDFExportPage() {
                   }}
                 >
                   <h4 className="font-semibold capitalize">{template.name}</h4>
-                  <p className="text-sm text-gray-600">{template.description}</p>
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
                     Sections: {template.sections.join(", ")}
                   </p>
                 </div>
@@ -213,25 +213,25 @@ export function PDFExportPage() {
                 placeholder="Your trading name"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
               />
             </CardContent>
           </Card>
 
           {/* Preview */}
-          <Card className="bg-gray-50">
+          <Card className="border-border bg-muted/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Preview</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm space-y-2">
+            <CardContent className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
-                <FileText size={16} className="text-gray-600" />
+                <FileText size={16} className="text-muted-foreground" />
                 <span>Trading Journal Report</span>
               </div>
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-muted-foreground">
                 {customSections.length > 0 ? customSections.length : currentTemplate?.sections.length} sections
               </p>
-              <p className="text-xs text-gray-600 capitalize">{colorScheme} style</p>
+              <p className="text-xs capitalize text-muted-foreground">{colorScheme} style</p>
             </CardContent>
           </Card>
 
@@ -249,9 +249,9 @@ export function PDFExportPage() {
       </div>
 
       {/* Info */}
-      <Card className="bg-blue-50 border-blue-200">
+      <Card className="border-primary/25 bg-primary/5">
         <CardContent className="pt-6">
-          <p className="text-sm text-blue-900">
+          <p className="text-sm text-foreground">
             💡 <strong>Tips:</strong> Professional reports are great for sending to coaches or accountability partners.
             Detailed reports include all recent trades. The Coach template focuses on improvement areas.
           </p>

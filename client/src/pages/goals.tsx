@@ -367,10 +367,10 @@ function buildGoalStats(periodType: GoalPeriodType, periodKey: string, trades: T
 }
 
 function statusBadge(status: GoalEvaluation["status"]) {
-  if (status === "achieved") return { label: "Achieved", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" };
-  if (status === "missed") return { label: "Missed", className: "bg-red-500/10 text-red-600 border-red-500/30" };
-  if (status === "on-track") return { label: "On track", className: "bg-blue-500/10 text-blue-600 border-blue-500/30" };
-  if (status === "at-risk") return { label: "At risk", className: "bg-amber-500/10 text-amber-600 border-amber-500/30" };
+  if (status === "achieved") return { label: "Achieved", className: "border border-profit/30 bg-profit/10 text-profit" };
+  if (status === "missed") return { label: "Missed", className: "border border-loss/30 bg-loss/10 text-loss" };
+  if (status === "on-track") return { label: "On track", className: "border border-primary/30 bg-primary/10 text-primary" };
+  if (status === "at-risk") return { label: "At risk", className: "border border-chart-4/30 bg-chart-4/10 text-chart-4" };
   return { label: "No targets", className: "bg-muted text-muted-foreground border-transparent" };
 }
 
@@ -410,9 +410,9 @@ function GoalProgress({
               : metric.target}
           </span>
           {metric.passed ? (
-            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            <CheckCircle2 className="w-3 h-3 text-profit" />
           ) : (
-            <XCircle className="w-3 h-3 text-red-500" />
+            <XCircle className="w-3 h-3 text-loss" />
           )}
         </div>
       </div>
@@ -420,7 +420,7 @@ function GoalProgress({
         <div
           className={cn(
             "h-full rounded-full transition-all duration-500 ease-out",
-            metric.passed ? "bg-emerald-500" : "bg-amber-500"
+            metric.passed ? "bg-profit" : "bg-chart-4"
           )}
           style={{ width: `${progress}%` }}
         />
@@ -833,11 +833,11 @@ export default function GoalsPage() {
             </div>
             <div className="rounded-3xl border border-border bg-card p-4">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Achieved</div>
-              <div className="mt-2 text-3xl font-semibold text-emerald-600 dark:text-emerald-300">{summaryCards.achieved}</div>
+              <div className="mt-2 text-3xl font-semibold text-profit">{summaryCards.achieved}</div>
             </div>
             <div className="rounded-3xl border border-border bg-card p-4">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">At risk</div>
-              <div className="mt-2 text-3xl font-semibold text-amber-600 dark:text-amber-300">{summaryCards.atRisk}</div>
+              <div className="mt-2 text-3xl font-semibold text-chart-4">{summaryCards.atRisk}</div>
             </div>
           </div>
         </CardContent>
@@ -953,7 +953,7 @@ export default function GoalsPage() {
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="rounded-2xl border border-border bg-card p-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Net P&L</div>
-                    <div className={cn("mt-2 text-2xl font-semibold", selectedStats.netProfit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                    <div className={cn("mt-2 text-2xl font-semibold", selectedStats.netProfit >= 0 ? "text-profit" : "text-loss")}>
                       {selectedStats.netProfit >= 0 ? "+" : ""}{formatCurrency(selectedStats.netProfit)}
                     </div>
                   </div>

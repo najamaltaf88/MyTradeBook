@@ -34,8 +34,20 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { TrendingUp, TrendingDown, DollarSign, Brain, NotebookPen, AlertTriangle, Target, Sparkles } from "lucide-react";
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Brain,
+  NotebookPen,
+  AlertTriangle,
+  Target,
+  Sparkles,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { formatCurrency, formatPercent, formatDayKeyInTimeZone, cn } from "@/lib/utils";
 import { useTimezone } from "@/hooks/use-timezone";
 import { useAccount } from "@/hooks/use-account";
 import type { Mt5Account, Trade } from "@shared/schema";
@@ -97,6 +109,14 @@ interface DashboardMetrics {
   >;
 }
 
+interface DailyPnlBreakdownRow {
+  day: string;
+  profit: number;
+  trades: number;
+  wins: number;
+  winRate: number;
+}
+
 interface DashboardStats {
   currentBalance: number;
   accountBalance: number;
@@ -114,6 +134,7 @@ interface DashboardStats {
   weeklyProfitPercent: number;
   monthlyPnlToDate: number;
   monthlyProfitPercent: number;
+  dailyPnlBreakdown?: DailyPnlBreakdownRow[];
 }
 
 interface DashboardReflection {
@@ -129,6 +150,48 @@ interface ReflectionSuggestion {
   title: string;
   detail: string;
   category: "discipline" | "execution" | "risk" | "mindset";
+}
+
+function parseDayKeyToInstant(dayKey: string, timeZone: string): Date {
+  const [ys = "0", ms = "1", ds = "1"] = dayKey.split("-");
+  const y = parseInt(ys, 10);
+  const mo = parseInt(ms, 10);
+  const d = parseInt(ds, 10);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+    return new Date(`${dayKey}T12:00:00`);
+  }
+
+  for (let delta = -2; delta <= 2; delta++) {
+    for (let hour = 0; hour < 24; hour++) {
+      const cand = new Date(Date.UTC(y, mo - 1, d + delta, hour, 30, 0));
+      if (formatDayKeyInTimeZone(cand, timeZone) === dayKey) return cand;
+    }
+  }
+  return new Date(`${dayKey}T12:00:00`);
+}
+
+function addDaysToDayKey(dayKey: string, delta: number, timeZone: string): string {
+  let key = dayKey;
+  const step = delta >= 0 ? 1 : -1;
+  for (let i = 0; i < Math.abs(delta); i++) {
+    const anchor = parseDayKeyToInstant(key, timeZone);
+    key = formatDayKeyInTimeZone(new Date(anchor.getTime() + step * 86400000), timeZone);
+  }
+  return key;
+}
+
+function monthGridMeta(calMonth: string, timeZone: string) {
+  const [yStr = "0", moStr = "1"] = calMonth.split("-");
+  const y = parseInt(yStr, 10);
+  const mo = parseInt(moStr, 10);
+  const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const firstKey = `${calMonth}-01`;
+  const anchor = parseDayKeyToInstant(firstKey, timeZone);
+  const wdLabel = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone }).format(anchor);
+  const sun0: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dow = sun0[wdLabel] ?? 0;
+  const padMon0 = (dow + 6) % 7;
+  return { daysInMonth, padMon0 };
 }
 
 function normalizeTradesResponse(payload: unknown): Trade[] {
@@ -183,7 +246,8 @@ function combineAccounts(accounts: Mt5Account[]): Mt5Account | null {
 
 function calculateMetrics(
   account: Mt5Account | null,
-  trades: Trade[]
+  trades: Trade[],
+  timezone: string,
 ): DashboardMetrics {
   const closedTrades = trades.filter((t) => t.isClosed);
   const openTrades = trades.filter((t) => !t.isClosed);
@@ -297,11 +361,7 @@ function calculateMetrics(
   // Monthly Returns
   const monthlyMap: Record<string, any> = {};
   for (const t of closedTrades) {
-    const date = new Date(t.closeTime ?? t.openTime);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}`;
+    const key = formatDayKeyInTimeZone(t.closeTime ?? t.openTime, timezone).slice(0, 7);
     if (!monthlyMap[key]) {
       monthlyMap[key] = { profit: 0, trades: 0, wins: 0 };
     }
@@ -386,10 +446,10 @@ function calculateMetrics(
 }
 
 function suggestionTone(category: ReflectionSuggestion["category"]): string {
-  if (category === "risk") return "border-red-500/20 bg-red-500/5";
-  if (category === "execution") return "border-blue-500/20 bg-blue-500/5";
-  if (category === "discipline") return "border-amber-500/20 bg-amber-500/5";
-  return "border-emerald-500/20 bg-emerald-500/5";
+  if (category === "risk") return "border-loss/25 bg-loss/8";
+  if (category === "execution") return "border-primary/25 bg-primary/8";
+  if (category === "discipline") return "border-chart-4/25 bg-chart-4/8";
+  return "border-profit/25 bg-profit/8";
 }
 
 function suggestionIcon(category: ReflectionSuggestion["category"]) {
@@ -483,8 +543,8 @@ export default function ProfessionalDashboard() {
   );
 
   const metrics = useMemo(
-    () => calculateMetrics(metricsAccount, trades || []),
-    [metricsAccount, trades]
+    () => calculateMetrics(metricsAccount, trades || [], timezone),
+    [metricsAccount, trades, timezone]
   );
 
   const displayDeposit = asFiniteNumber(stats?.depositBalance, metrics.depositBalance);
@@ -519,6 +579,87 @@ export default function ProfessionalDashboard() {
       cumulative: point.cumulative,
     }));
   }, [stats?.equityCurve, displayDeposit]);
+
+  const currentMonthYm = useMemo(() => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+    }).formatToParts(new Date());
+    const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+    const m = parts.find((p) => p.type === "month")?.value ?? "01";
+    return `${y}-${m}`;
+  }, [timezone]);
+
+  const [calMonth, setCalMonth] = useState(currentMonthYm);
+
+  useEffect(() => {
+    setCalMonth(currentMonthYm);
+  }, [currentMonthYm]);
+
+  const pnlByDay = useMemo(() => {
+    const m = new Map<string, DailyPnlBreakdownRow>();
+    for (const row of stats?.dailyPnlBreakdown ?? []) {
+      m.set(row.day, row);
+    }
+    return m;
+  }, [stats?.dailyPnlBreakdown]);
+
+  const calendarCells = useMemo(() => {
+    const { daysInMonth, padMon0 } = monthGridMeta(calMonth, timezone);
+    type Cell =
+      | { kind: "blank" }
+      | { kind: "day"; dayNum: number; dayKey: string; row?: DailyPnlBreakdownRow };
+    const cells: Cell[] = [];
+    for (let i = 0; i < padMon0; i++) {
+      cells.push({ kind: "blank" });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayKey = `${calMonth}-${String(d).padStart(2, "0")}`;
+      cells.push({ kind: "day", dayNum: d, dayKey, row: pnlByDay.get(dayKey) });
+    }
+    return cells;
+  }, [calMonth, timezone, pnlByDay]);
+
+  const monthBreakdownTotal = useMemo(() => {
+    const prefix = `${calMonth}-`;
+    let profit = 0;
+    let trades = 0;
+    for (const row of stats?.dailyPnlBreakdown ?? []) {
+      if (!row.day.startsWith(prefix)) continue;
+      profit += row.profit;
+      trades += row.trades;
+    }
+    return { profit, trades };
+  }, [stats?.dailyPnlBreakdown, calMonth]);
+
+  const shiftCalMonth = (dir: -1 | 1) => {
+    setCalMonth((prev) => {
+      const [yStr = "0", mStr = "1"] = prev.split("-");
+      const y = parseInt(yStr, 10);
+      const mo = parseInt(mStr, 10);
+      const next = mo + dir;
+      if (next < 1) return `${y - 1}-12`;
+      if (next > 12) return `${y + 1}-01`;
+      return `${y}-${String(next).padStart(2, "0")}`;
+    });
+  };
+
+  const weekRangeLabel = useMemo(() => {
+    const todayKey = formatDayKeyInTimeZone(new Date(), timezone);
+    const wdLabel = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: timezone }).format(
+      parseDayKeyToInstant(todayKey, timezone),
+    );
+    const sun0: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = sun0[wdLabel] ?? 0;
+    const mondaysBack = (dow + 6) % 7;
+    let start = todayKey;
+    for (let i = 0; i < mondaysBack; i++) {
+      start = addDaysToDayKey(start, -1, timezone);
+    }
+    return `${start} → ${todayKey}`;
+  }, [timezone]);
+
   const displayProfitFactor = metrics.profitFactor;
   const isPositive = displayProfit >= 0;
   const scopeLabel = selectedAccount?.name || "All Accounts";
@@ -571,7 +712,7 @@ export default function ProfessionalDashboard() {
                 <Badge variant="outline">{formatPercent(displayProfitPercent)}</Badge>
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Live Equity</p>
-              <p className="mt-2 text-3xl font-semibold text-emerald-600 dark:text-emerald-300">{formatCurrency(displayEquity)}</p>
+              <p className="mt-2 text-3xl font-semibold text-profit">{formatCurrency(displayEquity)}</p>
               <p className="mt-2 text-sm text-muted-foreground">Floating {displayFloating >= 0 ? "+" : ""}{formatCurrency(displayFloating)}</p>
             </div>
 
@@ -583,7 +724,7 @@ export default function ProfessionalDashboard() {
                 <Badge variant="outline">{metrics.closedTrades} closed</Badge>
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Net P&amp;L</p>
-              <p className={`mt-2 text-3xl font-semibold ${isPositive ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>
+              <p className={`mt-2 text-3xl font-semibold ${isPositive ? "text-profit" : "text-loss"}`}>
                 {displayProfit >= 0 ? "+" : ""}{formatCurrency(displayProfit)}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">Realized {formatCurrency(metrics.tradeNetProfit)}</p>
@@ -643,7 +784,7 @@ export default function ProfessionalDashboard() {
             </div>
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-4 py-3">
               <span className="text-sm text-muted-foreground">Realized trade P&amp;L</span>
-              <span className={`text-sm font-semibold ${metrics.tradeNetProfit >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>
+              <span className={`text-sm font-semibold ${metrics.tradeNetProfit >= 0 ? "text-profit" : "text-loss"}`}>
                 {metrics.tradeNetProfit >= 0 ? "+" : ""}{formatCurrency(metrics.tradeNetProfit)}
               </span>
             </div>
@@ -653,7 +794,7 @@ export default function ProfessionalDashboard() {
             </div>
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-4 py-3">
               <span className="text-sm text-muted-foreground">Max drawdown</span>
-              <span className="text-sm font-semibold text-rose-600 dark:text-rose-300">
+              <span className="text-sm font-semibold text-loss">
                 {formatCurrency(metrics.maxDrawdown)} ({formatPercent(metrics.maxDrawdownPercent)})
               </span>
             </div>
@@ -663,13 +804,13 @@ export default function ProfessionalDashboard() {
             </div>
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-4 py-3">
               <span className="text-sm text-muted-foreground">Daily P&amp;L</span>
-              <span className={`text-sm font-semibold ${dailyPnl >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>
+              <span className={`text-sm font-semibold ${dailyPnl >= 0 ? "text-profit" : "text-loss"}`}>
                 {dailyPnl >= 0 ? "+" : ""}{formatCurrency(dailyPnl)}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-4 py-3">
               <span className="text-sm text-muted-foreground">Weekly P&amp;L</span>
-              <span className={`text-sm font-semibold ${weeklyPnl >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>
+              <span className={`text-sm font-semibold ${weeklyPnl >= 0 ? "text-profit" : "text-loss"}`}>
                 {weeklyPnl >= 0 ? "+" : ""}{formatCurrency(weeklyPnl)}
               </span>
             </div>
@@ -731,9 +872,10 @@ export default function ProfessionalDashboard() {
       </div>
 
       <Tabs defaultValue="equity" className="w-full page-fade-in stagger-3">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto">
+        <TabsList className="flex w-full max-w-5xl flex-wrap gap-1">
           <TabsTrigger value="metrics">Metrics</TabsTrigger>
           <TabsTrigger value="equity">Equity Curve</TabsTrigger>
+          <TabsTrigger value="pnl">PnL calendar</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="symbols">By Symbol</TabsTrigger>
         </TabsList>
@@ -754,7 +896,7 @@ export default function ProfessionalDashboard() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Avg Loss</span>
-                  <span className="font-semibold text-red-600">
+                  <span className="font-semibold text-loss">
                     -{formatCurrency(metrics.avgLoss)}
                   </span>
                 </div>
@@ -780,19 +922,19 @@ export default function ProfessionalDashboard() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Avg Win</span>
-                  <span className="font-semibold text-green-600">
+                  <span className="font-semibold text-profit">
                     +{formatCurrency(metrics.avgWin)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Best Trade</span>
-                  <span className="font-semibold text-green-600">
+                  <span className="font-semibold text-profit">
                     +{formatCurrency(metrics.bestTrade)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Worst Trade</span>
-                  <span className="font-semibold text-red-600">
+                  <span className="font-semibold text-loss">
                     {formatCurrency(metrics.worstTrade)}
                   </span>
                 </div>
@@ -851,9 +993,9 @@ export default function ProfessionalDashboard() {
                     <LineChart data={equitySeries}>
                       <defs>
                         <linearGradient id="equityDashboardLine" x1="0" x2="1" y1="0" y2="0">
-                          <stop offset="0%" stopColor="#14b8a6" />
-                          <stop offset="55%" stopColor="#38bdf8" />
-                          <stop offset="100%" stopColor="#8b5cf6" />
+                          <stop offset="0%" stopColor="hsl(var(--chart-1))" />
+                          <stop offset="55%" stopColor="hsl(var(--chart-2))" />
+                          <stop offset="100%" stopColor="hsl(var(--chart-3))" />
                         </linearGradient>
                       </defs>
                       <CartesianGrid stroke="var(--grid-line)" vertical={false} />
@@ -861,10 +1003,11 @@ export default function ProfessionalDashboard() {
                       <YAxis tick={{ fill: "currentColor", fontSize: 12 }} tickLine={false} axisLine={false} width={84} />
                       <Tooltip
                         contentStyle={{
-                          background: "rgba(15, 23, 42, 0.94)",
-                          border: "1px solid rgba(148, 163, 184, 0.18)",
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
                           borderRadius: 18,
-                          color: "#f8fafc",
+                          color: "hsl(var(--card-foreground))",
+                          boxShadow: "var(--shadow-md)",
                         }}
                         formatter={(value: number | string) =>
                           formatCurrency(typeof value === "number" ? value : Number(value) || 0)
@@ -893,21 +1036,152 @@ export default function ProfessionalDashboard() {
                       <YAxis tick={{ fill: "currentColor", fontSize: 12 }} tickLine={false} axisLine={false} width={84} />
                       <Tooltip
                         contentStyle={{
-                          background: "rgba(15, 23, 42, 0.94)",
-                          border: "1px solid rgba(148, 163, 184, 0.18)",
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
                           borderRadius: 18,
-                          color: "#f8fafc",
+                          color: "hsl(var(--card-foreground))",
+                          boxShadow: "var(--shadow-md)",
                         }}
                         formatter={(value: number | string) =>
                           formatCurrency(typeof value === "number" ? value : Number(value) || 0)
                         }
                       />
-                      <Bar dataKey="profit" fill="#14b8a6" radius={[14, 14, 10, 10]} />
+                      <Bar dataKey="profit" fill="hsl(var(--primary))" radius={[14, 14, 10, 10]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
                   <p className="text-center text-muted-foreground py-8">No closed trades yet</p>
                 )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* PnL calendar */}
+        <TabsContent value="pnl" className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[1fr,320px]">
+            <Card className="rounded-[1.8rem]">
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <Calendar className="h-5 w-5 text-primary" />
+                    Calendar P&amp;L
+                  </CardTitle>
+                  <CardDescription>
+                    Closed-trade net by close date in your journal timezone ({timezone}). Week totals on the hero cards use the same week window:{" "}
+                    <span className="font-mono text-xs">{weekRangeLabel}</span>.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="icon" onClick={() => shiftCalMonth(-1)} aria-label="Previous month">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[8.5rem] text-center font-mono text-sm font-semibold">{calMonth}</span>
+                  <Button type="button" variant="outline" size="icon" onClick={() => shiftCalMonth(1)} aria-label="Next month">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setCalMonth(currentMonthYm)}>
+                    Today
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <div className="rounded-2xl border border-border bg-card px-4 py-2">
+                    <span className="text-muted-foreground">Month realized </span>
+                    <span className={cn("font-semibold", monthBreakdownTotal.profit >= 0 ? "text-profit" : "text-loss")}>
+                      {monthBreakdownTotal.profit >= 0 ? "+" : ""}
+                      {formatCurrency(monthBreakdownTotal.profit)}
+                    </span>
+                    <span className="text-muted-foreground"> · {monthBreakdownTotal.trades} closes</span>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card px-4 py-2">
+                    <span className="text-muted-foreground">This week </span>
+                    <span className={cn("font-semibold", weeklyPnl >= 0 ? "text-profit" : "text-loss")}>
+                      {weeklyPnl >= 0 ? "+" : ""}
+                      {formatCurrency(weeklyPnl)}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card px-4 py-2">
+                    <span className="text-muted-foreground">Today </span>
+                    <span className={cn("font-semibold", dailyPnl >= 0 ? "text-profit" : "text-loss")}>
+                      {dailyPnl >= 0 ? "+" : ""}
+                      {formatCurrency(dailyPnl)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                    <div key={d}>{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarCells.map((cell, idx) =>
+                    cell.kind === "blank" ? (
+                      <div key={`blank-${idx}`} className="min-h-[56px] rounded-xl bg-muted/15" />
+                    ) : cell.row ? (
+                      <Link
+                        key={cell.dayKey}
+                        href={`/trades?day=${cell.dayKey}`}
+                        className={cn(
+                          "flex min-h-[56px] flex-col justify-between rounded-xl border p-1.5 text-left transition-colors hover:ring-2 hover:ring-primary/30",
+                          cell.row.profit > 0 && "border-profit/35 bg-profit/10",
+                          cell.row.profit < 0 && "border-loss/35 bg-loss/10",
+                          cell.row.profit === 0 && "border-border bg-card",
+                        )}
+                      >
+                        <span className="text-[11px] font-semibold text-foreground">{cell.dayNum}</span>
+                        <span className={cn("text-xs font-semibold", cell.row.profit >= 0 ? "text-profit" : "text-loss")}>
+                          {cell.row.profit >= 0 ? "+" : ""}
+                          {formatCurrency(cell.row.profit)}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">
+                          {cell.row.trades}t · {formatPercent(cell.row.winRate)}
+                        </span>
+                      </Link>
+                    ) : (
+                      <div
+                        key={cell.dayKey}
+                        className="flex min-h-[56px] flex-col justify-between rounded-xl border border-border/60 bg-muted/10 p-1.5 text-left"
+                      >
+                        <span className="text-[11px] font-semibold text-foreground">{cell.dayNum}</span>
+                        <span className="text-[9px] text-muted-foreground">—</span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[1.8rem]">
+              <CardHeader>
+                <CardTitle className="text-base">Recent days</CardTitle>
+                <CardDescription>Newest closes first (same source as the grid).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                  {(stats?.dailyPnlBreakdown ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No closed trades yet.</p>
+                  ) : (
+                    (stats?.dailyPnlBreakdown ?? []).slice(0, 60).map((row) => (
+                      <Link
+                        key={row.day}
+                        href={`/trades?day=${row.day}`}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/30"
+                      >
+                        <span className="font-mono text-xs text-muted-foreground">{row.day}</span>
+                        <span className={cn("font-semibold", row.profit >= 0 ? "text-profit" : "text-loss")}>
+                          {row.profit >= 0 ? "+" : ""}
+                          {formatCurrency(row.profit)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {row.trades}t
+                        </span>
+                      </Link>
+                    ))
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -936,15 +1210,16 @@ export default function ProfessionalDashboard() {
                       paddingAngle={6}
                       dataKey="value"
                     >
-                      <Cell fill="#10b981" />
-                      <Cell fill="#ef4444" />
+                      <Cell fill="hsl(var(--profit))" />
+                      <Cell fill="hsl(var(--loss))" />
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        background: "rgba(15, 23, 42, 0.94)",
-                        border: "1px solid rgba(148, 163, 184, 0.18)",
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
                         borderRadius: 18,
-                        color: "#f8fafc",
+                        color: "hsl(var(--card-foreground))",
+                        boxShadow: "var(--shadow-md)",
                       }}
                     />
                   </PieChart>
@@ -968,7 +1243,7 @@ export default function ProfessionalDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total Profit/Loss</p>
-                  <p className={`text-2xl font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                  <p className={`text-2xl font-bold ${isPositive ? "text-profit" : "text-loss"}`}>
                     {formatCurrency(displayProfit)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">

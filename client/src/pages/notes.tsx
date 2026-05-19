@@ -123,10 +123,10 @@ const CATEGORY_LABELS: Record<keyof ReflectionDraft, string> = {
 };
 
 function suggestionTone(category: ReflectionSuggestion["category"]): string {
-  if (category === "risk") return "border-red-500/20 bg-red-500/5";
-  if (category === "execution") return "border-blue-500/20 bg-blue-500/5";
-  if (category === "discipline") return "border-amber-500/20 bg-amber-500/5";
-  return "border-emerald-500/20 bg-emerald-500/5";
+  if (category === "risk") return "border-loss/25 bg-loss/8";
+  if (category === "execution") return "border-primary/25 bg-primary/8";
+  if (category === "discipline") return "border-chart-4/25 bg-chart-4/8";
+  return "border-profit/25 bg-profit/8";
 }
 
 function suggestionIcon(category: ReflectionSuggestion["category"]) {
@@ -343,7 +343,7 @@ export default function NotesPage() {
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Sync status</div>
               <div className="mt-2 text-lg font-semibold">{savedLabel}</div>
               {saveError ? (
-                <div className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+                <div className="mt-1 text-xs text-loss">
                   Cloud sync failed. Click Save Now to retry.
                 </div>
               ) : null}

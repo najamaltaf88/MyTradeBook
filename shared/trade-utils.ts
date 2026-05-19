@@ -10,10 +10,14 @@ export const SCREENSHOT_URL_PREFIX = "/uploads/";
 export type TradingSession = TradingSessionName;
 export const TRADING_SESSIONS = TRADING_SESSION_ORDER;
 
-const TEN_PIP_SYMBOLS = [
+/** Gold/silver: 1 pip = 0.01 on most MT5 brokers (2 decimal quotes). */
+const HUNDRED_PIP_METALS = [
   "XAU",
   "XAUUSD",
   "GOLD",
+  "XAG",
+  "XAGUSD",
+  "SILVER",
 ];
 
 const HUNDRED_PIP_SYMBOLS = [
@@ -24,8 +28,6 @@ const HUNDRED_PIP_SYMBOLS = [
   "CADJPY",
   "NZDJPY",
   "CHFJPY",
-  "XAG",
-  "XAGUSD",
   "BTC",
   "BTCUSD",
   "ETH",
@@ -61,8 +63,8 @@ export function getPipMultiplier(symbol: string): number {
     return 100;
   }
 
-  if (TEN_PIP_SYMBOLS.some((item) => normalized.includes(item))) {
-    return 10;
+  if (HUNDRED_PIP_METALS.some((item) => normalized.includes(item))) {
+    return 100;
   }
 
   if (HUNDRED_PIP_SYMBOLS.some((item) => normalized.includes(item))) {
@@ -74,6 +76,13 @@ export function getPipMultiplier(symbol: string): number {
   }
 
   return 10000;
+}
+
+/** Net P&L = profit + commission + swap (MT5 deal semantics). */
+export function getTradeNetPnl(
+  trade: Pick<{ profit?: number | null; commission?: number | null; swap?: number | null }, "profit" | "commission" | "swap">,
+): number {
+  return (trade.profit ?? 0) + (trade.commission ?? 0) + (trade.swap ?? 0);
 }
 
 export function calculateTradePips(

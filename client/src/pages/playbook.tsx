@@ -36,11 +36,11 @@ import type { PlaybookRule } from "@shared/schema";
 import { z } from "zod";
 
 const CATEGORIES = [
-  { value: "entry", label: "Entry Rules", icon: Target, color: "text-emerald-500 bg-emerald-500/10" },
-  { value: "exit", label: "Exit Rules", icon: Shield, color: "text-blue-500 bg-blue-500/10" },
-  { value: "risk", label: "Risk Management", icon: AlertTriangle, color: "text-amber-500 bg-amber-500/10" },
-  { value: "psychology", label: "Psychology / Mindset", icon: Brain, color: "text-purple-500 bg-purple-500/10" },
-  { value: "routine", label: "Daily Routine", icon: CheckCircle2, color: "text-cyan-500 bg-cyan-500/10" },
+  { value: "entry", label: "Entry Rules", icon: Target, color: "text-profit bg-profit/10" },
+  { value: "exit", label: "Exit Rules", icon: Shield, color: "text-primary bg-primary/10" },
+  { value: "risk", label: "Risk Management", icon: AlertTriangle, color: "text-chart-4 bg-chart-4/10" },
+  { value: "psychology", label: "Psychology / Mindset", icon: Brain, color: "text-chart-3 bg-chart-3/10" },
+  { value: "routine", label: "Daily Routine", icon: CheckCircle2, color: "text-chart-2 bg-chart-2/10" },
 ];
 
 const playbookFormSchema = insertPlaybookRuleSchema.extend({

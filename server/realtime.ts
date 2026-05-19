@@ -83,6 +83,11 @@ export function subscribeUserStream(userId: string, res: Response): () => void {
   return realtimeHub.subscribe(userId, res);
 }
 
-export function publishUserUpdate(userId: string, reason: string, entity?: string) {
-  realtimeHub.publish(userId, { reason, entity });
+export function publishUserUpdate(
+  userId: string,
+  reason: string,
+  entity?: string,
+  meta?: Record<string, unknown>,
+) {
+  realtimeHub.publish(userId, { reason, entity, ...meta });
 }

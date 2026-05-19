@@ -14,6 +14,7 @@ import {
   insertPerformanceGoalSchema,
   updatePerformanceGoalSchema,
   webhookTradeSchema,
+  tradeReviewSchema,
 } from "@shared/schema";
 import {
   buildScreenshotUrl,
@@ -60,9 +61,14 @@ function getHeaderValue(value: string | string[] | undefined): string {
   return "";
 }
 
-function publishRealtimeUpdateForUser(userId: string, reason: string, entity?: string) {
+function publishRealtimeUpdateForUser(
+  userId: string,
+  reason: string,
+  entity?: string,
+  meta?: Record<string, unknown>,
+) {
   if (!userId) return;
-  publishUserUpdate(userId, reason, entity);
+  publishUserUpdate(userId, reason, entity, meta);
 }
 
 function localOnly(_req: Request, _res: Response, next: NextFunction) {
@@ -908,18 +914,23 @@ export async function registerRoutes(
             return res.json({ status: "ok", action: "trade_already_closed" });
           }
 
+          const mark = parsed.currentPrice ?? parsed.closePrice;
           await storage.updateTrade(existing.id, {
             openPrice: parsed.openPrice,
             volume: parsed.volume,
+            markPrice: mark ?? existing.markPrice ?? null,
             stopLoss: parsed.stopLoss ?? existing.stopLoss,
             takeProfit: parsed.takeProfit ?? existing.takeProfit,
             profit: parsed.profit ?? existing.profit ?? 0,
             commission: parsed.commission ?? existing.commission ?? 0,
             swap: parsed.swap ?? existing.swap ?? 0,
             comment: sanitizedComment ?? existing.comment,
+            isClosed: false,
+            reviewPending: false,
           });
           Logger.logTrade("trade_open_updated", "success", existing.id);
         } else {
+          const mark = parsed.currentPrice ?? parsed.closePrice;
           const newTrade = await storage.createTrade({
             ticket: parsed.ticket,
             accountId: account.id,
@@ -927,6 +938,7 @@ export async function registerRoutes(
             type: parsed.type,
             openTime: parseDateFlexible(parsed.openTime),
             openPrice: parsed.openPrice,
+            markPrice: mark ?? null,
             volume: parsed.volume,
             profit: parsed.profit ?? 0,
             commission: parsed.commission ?? 0,
@@ -935,13 +947,22 @@ export async function registerRoutes(
             takeProfit: parsed.takeProfit ?? null,
             comment: sanitizedComment,
             isClosed: false,
+            reviewPending: false,
           });
           Logger.logTrade("trade_open_created", "success", newTrade.id);
+          await storage.updateAccount(account.id, { connected: true, lastSyncAt: new Date() });
+          publishRealtimeUpdateForUser(account.userId || "", "trade_opened", "trades", {
+            tradeId: newTrade.id,
+          });
+          return res.json({ status: "ok", action: "trade_opened", tradeId: newTrade.id });
         }
 
         await storage.updateAccount(account.id, { connected: true, lastSyncAt: new Date() });
-        publishRealtimeUpdateForUser(account.userId || "", "trade_opened", "trades");
-        return res.json({ status: "ok", action: "trade_opened" });
+        const updatedOpenId = existing.id;
+        publishRealtimeUpdateForUser(account.userId || "", "trade_opened", "trades", {
+          tradeId: updatedOpenId,
+        });
+        return res.json({ status: "ok", action: "trade_opened", tradeId: updatedOpenId });
       }
 
       if (parsed.action === "TRADE_CLOSE") {
@@ -953,10 +974,12 @@ export async function registerRoutes(
             ? calculateTradePips(parsed.symbol, parsed.type, parsed.openPrice, parsed.closePrice)
             : null;
 
+        let closedTradeId: string;
         if (existing) {
-          await storage.updateTrade(existing.id, {
+          const closed = await storage.updateTrade(existing.id, {
             closeTime,
             closePrice: parsed.closePrice ?? null,
+            markPrice: null,
             profit: parsed.profit ?? 0,
             commission: parsed.commission ?? 0,
             swap: parsed.swap ?? 0,
@@ -965,9 +988,11 @@ export async function registerRoutes(
             isClosed: true,
             duration,
             pips,
+            reviewPending: true,
           });
+          closedTradeId = closed?.id ?? existing.id;
         } else {
-          await storage.createTrade({
+          const created = await storage.createTrade({
             ticket: parsed.ticket,
             accountId: account.id,
             symbol: parsed.symbol,
@@ -986,7 +1011,9 @@ export async function registerRoutes(
             duration,
             comment: sanitizedComment,
             isClosed: true,
+            reviewPending: true,
           });
+          closedTradeId = created.id;
         }
 
         if (parsed.balance !== undefined) {
@@ -1006,20 +1033,37 @@ export async function registerRoutes(
           await storage.updateAccount(account.id, { connected: true, lastSyncAt: new Date() });
         }
 
-        publishRealtimeUpdateForUser(account.userId || "", "trade_closed", "trades");
-        return res.json({ status: "ok", action: "trade_closed" });
+        publishRealtimeUpdateForUser(account.userId || "", "trade_closed", "trades", {
+          tradeId: closedTradeId,
+        });
+        return res.json({ status: "ok", action: "trade_closed", tradeId: closedTradeId });
       }
 
       if (parsed.action === "TRADE_UPDATE") {
         if (existing) {
-          const updates: any = {};
+          const updates: Record<string, unknown> = {};
           if (parsed.stopLoss !== undefined) updates.stopLoss = parsed.stopLoss;
           if (parsed.takeProfit !== undefined) updates.takeProfit = parsed.takeProfit;
           if (parsed.profit !== undefined) updates.profit = parsed.profit;
           if (parsed.commission !== undefined) updates.commission = parsed.commission;
           if (parsed.swap !== undefined) updates.swap = parsed.swap;
           if (parsed.volume !== undefined) updates.volume = parsed.volume;
+          const mark = parsed.currentPrice ?? parsed.closePrice;
+          if (mark !== undefined && !existing.isClosed) {
+            updates.markPrice = mark;
+            updates.pips = calculateTradePips(
+              existing.symbol,
+              existing.type,
+              existing.openPrice,
+              mark,
+            );
+          }
           await storage.updateTrade(existing.id, updates);
+          await storage.updateAccount(account.id, { connected: true, lastSyncAt: new Date() });
+          publishRealtimeUpdateForUser(account.userId || "", "trade_updated", "trades", {
+            tradeId: existing.id,
+          });
+          return res.json({ status: "ok", action: "trade_updated", tradeId: existing.id });
         }
         await storage.updateAccount(account.id, { connected: true, lastSyncAt: new Date() });
         publishRealtimeUpdateForUser(account.userId || "", "trade_updated", "trades");
@@ -1073,6 +1117,70 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/trades/:id/review", localOnly, async (req, res) => {
+    try {
+      const tradeId = getRouteParam(req.params.id);
+      const userId = getUserId(req);
+      if (!(await verifyTradeOwnership(tradeId, userId))) {
+        return res.status(404).json({ message: "Trade not found" });
+      }
+      const trade = await storage.getTrade(tradeId);
+      if (!trade) return res.status(404).json({ message: "Trade not found" });
+
+      const parsed = tradeReviewSchema.parse(req.body);
+      const rules = await storage.getPlaybookRules(userId);
+
+      const coreLabels: Record<string, string> = {
+        followedPlan: "Followed trading plan",
+        slBeforeEntry: "Stop loss before entry",
+        riskWithinLimits: "Risk within limits",
+        exitPerPlan: "Exit per plan",
+        emotionControlled: "Emotion controlled",
+        noRevengeOrFomo: "No revenge / FOMO",
+      };
+      for (const [key, followed] of Object.entries(parsed.coreChecks)) {
+        await storage.createComplianceLog({
+          tradeId,
+          ruleId: `core:${key}`,
+          userId,
+          accountId: trade.accountId,
+          ruleName: coreLabels[key] ?? key,
+          followed,
+          notes: null,
+        });
+      }
+
+      for (const entry of parsed.playbookRules) {
+        const rule = rules.find((r) => r.id === entry.ruleId);
+        if (!rule) continue;
+        await storage.createComplianceLog({
+          tradeId,
+          ruleId: entry.ruleId,
+          userId,
+          accountId: trade.accountId,
+          ruleName: rule.title,
+          followed: entry.followed,
+          notes: parsed.lesson ?? null,
+        });
+      }
+
+      const updated = await storage.updateTrade(tradeId, {
+        reviewPending: false,
+        reviewCompletedAt: new Date(),
+        logic: parsed.lesson
+          ? trade.logic
+            ? `${trade.logic}\n\n— Review: ${parsed.lesson}`
+            : parsed.lesson
+          : trade.logic,
+      });
+
+      publishRealtimeUpdateForUser(userId, "trade_reviewed", "trades", { tradeId });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/ai/trades", localOnly, async (req, res) => {
     try {
       const userId = getUserId(req);
@@ -1100,11 +1208,29 @@ export async function registerRoutes(
       const accountId = req.query.accountId as string | undefined;
       const style = normalizeTradingStyle(req.query.style as string | undefined);
       const userTrades = await storage.getTradesByUser(userId, accountId);
-      const portfolio = analyzePortfolio(userTrades, { style });
-      const analyses = Array.isArray(portfolio.tradeAnalyses) ? portfolio.tradeAnalyses : [];
-      const single =
-        analyses.find((item) => item.tradeId === tradeId) ||
-        analyzeTrade(trade, { trades: userTrades, style });
+
+      const AI_TRADE_CACHE_MS = 6 * 60 * 60 * 1000;
+      let single: ReturnType<typeof analyzeTrade> | null = null;
+      if (trade.aiAnalysisCache && trade.aiCachedAt) {
+        try {
+          const cached = JSON.parse(trade.aiAnalysisCache) as { tradeId?: string; style?: string };
+          const cachedAt = new Date(trade.aiCachedAt).getTime();
+          if (
+            cached.tradeId === tradeId &&
+            cached.style === style &&
+            typeof (cached as { executiveSummary?: string }).executiveSummary === "string" &&
+            Number.isFinite(cachedAt) &&
+            Date.now() - cachedAt < AI_TRADE_CACHE_MS
+          ) {
+            single = cached as ReturnType<typeof analyzeTrade>;
+          }
+        } catch {
+          // Recompute below.
+        }
+      }
+      if (!single) {
+        single = analyzeTrade(trade, { trades: userTrades, style });
+      }
 
       await storage.updateTrade(tradeId, {
         aiGrade: single.grade,
@@ -1696,20 +1822,56 @@ export async function registerRoutes(
         }
       }
 
-      const dailyPnl: Record<string, number> = {};
+      const dailyPnl: Record<string, { profit: number; trades: number; wins: number }> = {};
       for (const t of closedTrades) {
         if (t.closeTime) {
           const day = getDayKey(t.closeTime);
-          dailyPnl[day] = (dailyPnl[day] || 0) + tradeNetPnl(t);
+          if (!dailyPnl[day]) dailyPnl[day] = { profit: 0, trades: 0, wins: 0 };
+          const net = tradeNetPnl(t);
+          dailyPnl[day].profit += net;
+          dailyPnl[day].trades += 1;
+          if (net > 0) dailyPnl[day].wins += 1;
         }
       }
+
+      const parseDayKeyToAnchor = (dayKey: string) => {
+        const [ys = "0", ms = "1", ds = "1"] = dayKey.split("-");
+        const y = parseInt(ys, 10);
+        const mo = parseInt(ms, 10);
+        const d = parseInt(ds, 10);
+        if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
+          return new Date(`${dayKey}T12:00:00`);
+        }
+
+        for (let delta = -2; delta <= 2; delta++) {
+          for (let hour = 0; hour < 24; hour++) {
+            const cand = new Date(Date.UTC(y, mo - 1, d + delta, hour, 30, 0));
+            if (getDayKey(cand) === dayKey) return cand;
+          }
+        }
+        return new Date(`${dayKey}T12:00:00`);
+      };
+
+      const addCalendarDays = (dayKey: string, delta: number) => {
+        let key = dayKey;
+        const step = delta >= 0 ? 1 : -1;
+        for (let i = 0; i < Math.abs(delta); i++) {
+          const a = parseDayKeyToAnchor(key);
+          key = getDayKey(new Date(a.getTime() + step * 86400000));
+        }
+        return key;
+      };
 
       let cumulativePnl = 0;
       const equityCurve = Object.entries(dailyPnl)
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, pnl]) => {
-          cumulativePnl += pnl;
-          return { date, pnl: Math.round(pnl * 100) / 100, cumulative: Math.round(cumulativePnl * 100) / 100 };
+        .map(([date, d]) => {
+          cumulativePnl += d.profit;
+          return {
+            date,
+            pnl: Math.round(d.profit * 100) / 100,
+            cumulative: Math.round(cumulativePnl * 100) / 100,
+          };
         });
 
       const hourlyStats: Record<number, { profit: number; count: number; wins: number }> = {};
@@ -1778,23 +1940,37 @@ export async function registerRoutes(
       const todayStartingBalance = Math.round((accountBalanceRaw - todayPnl) * 100) / 100;
       const todayProfitPercent = todayStartingBalance !== 0 ? (todayPnl / todayStartingBalance) * 100 : 0;
 
-      const todayRef = new Date(`${todayLocal}T12:00:00Z`);
-      const mondayOffset = (todayRef.getUTCDay() + 6) % 7;
-      const weekStartRef = new Date(todayRef);
-      weekStartRef.setUTCDate(weekStartRef.getUTCDate() - mondayOffset);
-      const weekStartKey = weekStartRef.toISOString().slice(0, 10);
+      const todayAnchor = parseDayKeyToAnchor(todayLocal);
+      const wdLabel = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: userTz }).format(todayAnchor);
+      const dowSun0: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const dow = dowSun0[wdLabel] ?? 0;
+      const mondaysBack = (dow + 6) % 7;
+      let weekStartKey = todayLocal;
+      for (let i = 0; i < mondaysBack; i++) {
+        weekStartKey = addCalendarDays(weekStartKey, -1);
+      }
       const monthStartKey = `${todayLocal.slice(0, 7)}-01`;
 
       let weeklyPnlRaw = 0;
       let monthlyPnlToDateRaw = 0;
-      for (const [day, pnl] of Object.entries(dailyPnl)) {
+      for (const [day, d] of Object.entries(dailyPnl)) {
         if (day >= weekStartKey && day <= todayLocal) {
-          weeklyPnlRaw += pnl;
+          weeklyPnlRaw += d.profit;
         }
         if (day >= monthStartKey && day <= todayLocal) {
-          monthlyPnlToDateRaw += pnl;
+          monthlyPnlToDateRaw += d.profit;
         }
       }
+
+      const dailyPnlBreakdown = Object.entries(dailyPnl)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([day, d]) => ({
+          day,
+          profit: Math.round(d.profit * 100) / 100,
+          trades: d.trades,
+          wins: d.wins,
+          winRate: d.trades > 0 ? Math.round((d.wins / d.trades) * 10000) / 100 : 0,
+        }));
       const weeklyPnl = Math.round(weeklyPnlRaw * 100) / 100;
       const monthlyPnlToDate = Math.round(monthlyPnlToDateRaw * 100) / 100;
       const weeklyStartingBalance = Math.round((accountBalanceRaw - weeklyPnl) * 100) / 100;
@@ -1882,6 +2058,7 @@ export async function registerRoutes(
             count: d.count,
             winRate: d.count > 0 ? Math.round((d.wins / d.count) * 10000) / 100 : 0,
           })),
+        dailyPnlBreakdown,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

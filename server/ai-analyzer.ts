@@ -36,6 +36,7 @@ export interface TradeAnalysis {
   score: number;
   style: TradingStyle;
   session: SessionName;
+  executiveSummary: string;
   strengths: string[];
   improvements: string[];
   suggestions: string[];
@@ -548,6 +549,19 @@ function analyzeTradeWithContext(
   const strengths: string[] = [];
   const improvements: string[] = [];
 
+  const pipsPart =
+    typeof trade.pips === "number" && Number.isFinite(trade.pips)
+      ? `, ${trade.pips >= 0 ? "+" : ""}${round(trade.pips, 1)} pips`
+      : "";
+  const durPart =
+    durationMinutes !== null
+      ? ` Hold ~${round(durationMinutes, 0)} min.`
+      : trade.isClosed
+        ? ""
+        : " Still open.";
+  const executiveSummary =
+    `${trade.symbol} ${trade.type}: net P&L ${netPnl >= 0 ? "+" : ""}$${round(netPnl, 2)}${pipsPart}.${durPart}`.trim();
+
   const addCriterion = (
     key: CriterionKey,
     label: string,
@@ -1054,7 +1068,9 @@ function analyzeTradeWithContext(
   const grade = scoreToGrade(score);
 
   if (!strengths.length) {
-    strengths.push("No major execution edge identified yet; continue logging for stronger signals.");
+    strengths.push(
+      `${trade.symbol} ${trade.type} net $${round(netPnl, 2)} — add SL/TP and journal notes so the checklist can surface clearer strengths.`,
+    );
   }
   if (!improvements.length) {
     improvements.push("No critical weaknesses flagged on this trade.");
@@ -1129,6 +1145,7 @@ function analyzeTradeWithContext(
     score,
     style: profile.style,
     session,
+    executiveSummary,
     strengths: strengths.slice(0, 5),
     improvements: improvements.slice(0, 5),
     suggestions: suggestions.slice(0, 4),

@@ -35,27 +35,27 @@ interface PsychologyReport {
   summary: string;
 }
 
-function getSeverityColor(severity: string): string {
+function getSeverityBorder(severity: string): string {
   switch (severity) {
     case "critical":
-      return "text-red-600";
+      return "border-l-loss";
     case "high":
-      return "text-orange-600";
+      return "border-l-chart-5";
     case "medium":
-      return "text-yellow-600";
+      return "border-l-chart-4";
     case "low":
-      return "text-blue-600";
+      return "border-l-primary";
     default:
-      return "text-muted-foreground";
+      return "border-l-border";
   }
 }
 
 function getSeverityBadge(severity: string) {
   const colors = {
-    critical: "bg-red-100 text-red-800 dark:bg-red-950/35 dark:text-red-300",
-    high: "bg-orange-100 text-orange-800 dark:bg-orange-950/35 dark:text-orange-300",
-    medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950/35 dark:text-yellow-300",
-    low: "bg-blue-100 text-blue-800 dark:bg-blue-950/35 dark:text-blue-300",
+    critical: "border border-loss/30 bg-loss/12 text-loss",
+    high: "border border-chart-5/30 bg-chart-5/12 text-chart-5",
+    medium: "border border-chart-4/30 bg-chart-4/12 text-chart-4",
+    low: "border border-primary/30 bg-primary/10 text-primary",
   };
   return colors[severity as keyof typeof colors] || "bg-muted text-muted-foreground";
 }
@@ -63,18 +63,18 @@ function getSeverityBadge(severity: string) {
 function MistakeCategory({ mistake }: { mistake: TraderMistake }) {
   if (mistake.count === 0) {
     return (
-      <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 border border-green-200 dark:bg-green-950/20 dark:border-green-900/40">
+      <div className="flex items-center justify-between rounded-lg border border-profit/25 bg-profit/8 p-4">
         <div>
-          <p className="font-medium text-green-900 dark:text-green-200">{mistake.label}</p>
-          <p className="text-sm text-green-700 dark:text-green-300">No issues detected</p>
+          <p className="font-medium text-foreground">{mistake.label}</p>
+          <p className="text-sm text-muted-foreground">No issues detected</p>
         </div>
-        <div className="text-green-600">OK</div>
+        <div className="text-profit">OK</div>
       </div>
     );
   }
 
   return (
-    <Card className="border-l-4 border-l-orange-500">
+    <Card className="border-l-4 border-l-chart-4">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{mistake.label}</CardTitle>
@@ -83,12 +83,12 @@ function MistakeCategory({ mistake }: { mistake: TraderMistake }) {
           </Badge>
         </div>
         <CardDescription>
-          Cost: <span className="font-semibold text-red-600">${mistake.cost.toFixed(2)}</span> ({mistake.percentage.toFixed(1)}% of trades)
+          Cost: <span className="font-semibold text-loss">${mistake.cost.toFixed(2)}</span> ({mistake.percentage.toFixed(1)}% of trades)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {mistake.instances.map((instance, idx) => (
-          <div key={idx} className={`p-3 rounded-lg bg-muted/35 border ${getSeverityColor(instance.severity)} border-l-4`}>
+          <div key={idx} className={`rounded-lg border border-border bg-muted/35 p-3 border-l-4 ${getSeverityBorder(instance.severity)}`}>
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <Badge className={`${getSeverityBadge(instance.severity)} mb-2`}>{instance.severity.toUpperCase()}</Badge>
@@ -98,7 +98,7 @@ function MistakeCategory({ mistake }: { mistake: TraderMistake }) {
                 </p>
               </div>
               <div className="text-right ml-4">
-                <p className="font-semibold text-red-600">${instance.cost.toFixed(2)}</p>
+                <p className="font-semibold text-loss">${instance.cost.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function PsychologyPage() {
       </div>
 
       {/* Main Summary */}
-      <Card className={activeMistakes.length > 0 ? "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/40" : "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900/40"}>
+      <Card className={activeMistakes.length > 0 ? "border-loss/25 bg-loss/8" : "border-profit/25 bg-profit/8"}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
@@ -191,7 +191,7 @@ export default function PsychologyPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Psychological Cost</p>
-              <p className="text-2xl font-bold text-red-600">${report.totalMistakeCost.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-loss">${report.totalMistakeCost.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Cost as % of Profit</p>
@@ -226,41 +226,41 @@ export default function PsychologyPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {report.mistakeCategories.revengeTrading.count > 0 && (
-              <div className="p-3 bg-blue-50 rounded-lg dark:bg-blue-950/20">
-                <p className="font-medium text-blue-900 dark:text-blue-200">Revenge Trading</p>
-                <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="font-medium text-foreground">Revenge Trading</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   After a loss &gt; $50, wait 1 hour before opening a new trade. Use a checklist to reset emotions.
                 </p>
               </div>
             )}
             {report.mistakeCategories.lossChasing.count > 0 && (
-              <div className="p-3 bg-blue-50 rounded-lg dark:bg-blue-950/20">
-                <p className="font-medium text-blue-900 dark:text-blue-200">Loss Chasing</p>
-                <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="font-medium text-foreground">Loss Chasing</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Set a daily loss limit. Once hit, stop trading for remainder of day. This breaks the chasing cycle.
                 </p>
               </div>
             )}
             {report.mistakeCategories.panicClosing.count > 0 && (
-              <div className="p-3 bg-blue-50 rounded-lg dark:bg-blue-950/20">
-                <p className="font-medium text-blue-900 dark:text-blue-200">Panic Closing</p>
-                <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="font-medium text-foreground">Panic Closing</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Let 70% of winning trades reach TP before closing early. Use alerts instead of manual closes.
                 </p>
               </div>
             )}
             {report.mistakeCategories.overtrading.count > 0 && (
-              <div className="p-3 bg-blue-50 rounded-lg dark:bg-blue-950/20">
-                <p className="font-medium text-blue-900 dark:text-blue-200">Overtrading</p>
-                <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="font-medium text-foreground">Overtrading</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Limit to 5 trades/day maximum. Use a signal checklist - only trade when 3+ criteria aligned.
                 </p>
               </div>
             )}
             {report.mistakeCategories.inconsistentRiskSizing.count > 0 && (
-              <div className="p-3 bg-blue-50 rounded-lg dark:bg-blue-950/20">
-                <p className="font-medium text-blue-900 dark:text-blue-200">Inconsistent Risk Sizing</p>
-                <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              <div className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="font-medium text-foreground">Inconsistent Risk Sizing</p>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Risk exactly 1% per trade, always. Pre-define SL before entry. Never adjust after market opens.
                 </p>
               </div>

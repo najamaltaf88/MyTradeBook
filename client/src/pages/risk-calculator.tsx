@@ -97,7 +97,7 @@ export default function RiskCalculator() {
                     data-testid="input-balance"
                   />
                   {!balanceValid && balance !== "" && (
-                    <p className="text-[10px] text-red-500 mt-1" data-testid="text-balance-error">Enter a positive balance</p>
+                    <p className="text-[10px] text-destructive mt-1" data-testid="text-balance-error">Enter a positive balance</p>
                   )}
                 </div>
                 <div>
@@ -113,7 +113,7 @@ export default function RiskCalculator() {
                     data-testid="input-risk-percent"
                   />
                   {risk > 5 && (
-                    <p className="text-[10px] text-red-500 mt-1" data-testid="text-risk-warning">Extremely high risk per trade</p>
+                    <p className="text-[10px] text-destructive mt-1" data-testid="text-risk-warning">Extremely high risk per trade</p>
                   )}
                 </div>
               </div>
@@ -164,7 +164,7 @@ export default function RiskCalculator() {
                     data-testid="input-stop-loss"
                   />
                   {!slValid && stopLossPips !== "" && (
-                    <p className="text-[10px] text-red-500 mt-1" data-testid="text-sl-error">Enter a positive stop loss</p>
+                    <p className="text-[10px] text-destructive mt-1" data-testid="text-sl-error">Enter a positive stop loss</p>
                   )}
                 </div>
                 <div>
@@ -189,9 +189,9 @@ export default function RiskCalculator() {
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: "Conservative", pct: "0.5", color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400" },
-                  { label: "Standard", pct: "1", color: "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-400" },
-                  { label: "Aggressive", pct: "2", color: "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400" },
+                  { label: "Conservative", pct: "0.5", color: "border border-profit/20 bg-profit/10 text-profit" },
+                  { label: "Standard", pct: "1", color: "border border-primary/20 bg-primary/10 text-primary" },
+                  { label: "Aggressive", pct: "2", color: "border border-chart-4/20 bg-chart-4/10 text-chart-4" },
                 ].map((preset) => (
                   <Button
                     key={preset.label}
@@ -237,7 +237,7 @@ export default function RiskCalculator() {
                     <DollarSign className="w-3.5 h-3.5" />
                     Target Risk
                   </span>
-                  <span className="text-sm font-mono font-medium text-red-500" data-testid="text-risk-amount">
+                  <span className="text-sm font-mono font-medium text-destructive" data-testid="text-risk-amount">
                     {formatCurrency(riskAmount)}
                   </span>
                 </div>
@@ -252,7 +252,7 @@ export default function RiskCalculator() {
                     <TrendingUp className="w-3.5 h-3.5" />
                     Potential Profit
                   </span>
-                  <span className="text-sm font-mono font-medium text-emerald-500" data-testid="text-potential-profit">
+                  <span className="font-mono text-sm font-medium text-profit" data-testid="text-potential-profit">
                     {formatCurrency(potentialProfit)}
                   </span>
                 </div>
@@ -285,16 +285,16 @@ export default function RiskCalculator() {
             <CardContent>
               <div className={cn(
                 "rounded-lg p-4 text-center",
-                riskLevel === "conservative" && "bg-emerald-500/10",
-                riskLevel === "moderate" && "bg-amber-500/10",
-                riskLevel === "aggressive" && "bg-red-500/10"
+                riskLevel === "conservative" && "bg-profit/10",
+                riskLevel === "moderate" && "bg-chart-4/10",
+                riskLevel === "aggressive" && "bg-loss/10"
               )}>
                 <Badge
                   className={cn(
                     "mb-2",
-                    riskLevel === "conservative" && "bg-emerald-500 text-white",
-                    riskLevel === "moderate" && "bg-amber-500 text-white",
-                    riskLevel === "aggressive" && "bg-red-500 text-white"
+                    riskLevel === "conservative" && "bg-profit text-primary-foreground",
+                    riskLevel === "moderate" && "bg-chart-4 text-primary-foreground",
+                    riskLevel === "aggressive" && "bg-loss text-primary-foreground"
                   )}
                   data-testid="badge-risk-level"
                 >
@@ -312,22 +312,22 @@ export default function RiskCalculator() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <AlertTriangle className="h-4 w-4 text-chart-4" />
                 <CardTitle className="text-base">Risk Guidelines</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-xs text-muted-foreground">
                 <li className="flex gap-2">
-                  <span className="text-emerald-500 font-bold shrink-0">1%</span>
+                  <span className="shrink-0 font-bold text-profit">1%</span>
                   <span>Professional standard. Protects against streaks of losses.</span>
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-amber-500 font-bold shrink-0">2%</span>
+                  <span className="shrink-0 font-bold text-chart-4">2%</span>
                   <span>Maximum recommended. Use with strong setups only.</span>
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-red-500 font-bold shrink-0">3%+</span>
+                  <span className="text-destructive font-bold shrink-0">3%+</span>
                   <span>Dangerous. A 5-trade losing streak = 15%+ drawdown.</span>
                 </li>
               </ul>

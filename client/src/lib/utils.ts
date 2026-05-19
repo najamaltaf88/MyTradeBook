@@ -80,14 +80,12 @@ export function formatShortDate(date: string | Date | null | undefined): string 
 }
 
 export function getProfitColor(profit: number): string {
-  if (profit > 0) return "text-emerald-500";
-  if (profit < 0) return "text-red-500";
+  if (profit > 0) return "text-profit";
+  if (profit < 0) return "text-loss";
   return "text-muted-foreground";
 }
 
-export function getTradeNetPnl(trade: Pick<Trade, "profit" | "commission" | "swap">): number {
-  return (trade.profit || 0) + (trade.commission || 0) + (trade.swap || 0);
-}
+export { getTradeNetPnl } from "@shared/trade-utils";
 
 export function formatPercent(
   value: number,
@@ -96,4 +94,18 @@ export function formatPercent(
   const safeValue = Number.isFinite(value) ? value : 0;
   const decimals = options?.decimals ?? 1;
   return `${safeValue.toFixed(decimals)}%`;
+}
+
+/** YYYY-MM-DD in the user's journal timezone (matches server stats day keys). */
+export function formatDayKeyInTimeZone(date: Date | string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(date));
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
 }

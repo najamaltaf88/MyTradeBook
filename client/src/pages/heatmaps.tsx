@@ -167,7 +167,7 @@ export function HeatmapsPage() {
                       <span className="text-sm">{entry.winRate.toFixed(1)}%</span>
                       <div className="flex-1 bg-muted rounded h-2">
                         <div
-                          className="bg-green-500 h-2 rounded"
+                          className="h-2 rounded bg-profit"
                           style={{ width: `${entry.winRate * 100}%` }}
                         />
                       </div>
@@ -187,7 +187,7 @@ export function HeatmapsPage() {
 
         {/* Best/Worst */}
         <div className="grid md:grid-cols-2 gap-4">
-          <Card className="border-emerald-500/20 bg-emerald-500/10">
+          <Card className="border-profit/20 bg-profit/10">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <TrendingUp size={18} className="text-profit" /> Best Setup
@@ -201,7 +201,7 @@ export function HeatmapsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-red-500/20 bg-red-500/10">
+          <Card className="border-loss/20 bg-loss/10">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <TrendingDown size={18} className="text-loss" /> Worst Setup

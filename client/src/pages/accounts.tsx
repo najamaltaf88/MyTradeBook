@@ -218,7 +218,7 @@ function SetupInstructions({ account, onClose }: { account: Mt5Account; onClose:
                   onClick={() => copyToClipboard(account.apiKey || "", "apiKey")}
                   data-testid="button-copy-api-key"
                 >
-                  {copied === "apiKey" ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  {copied === "apiKey" ? <Check className="h-4 w-4 text-profit" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
             ) : (
@@ -240,7 +240,7 @@ function SetupInstructions({ account, onClose }: { account: Mt5Account; onClose:
                 onClick={() => copyToClipboard(appUrl, "url")}
                 data-testid="button-copy-url"
               >
-                {copied === "url" ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                {copied === "url" ? <Check className="h-4 w-4 text-profit" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
           </div>
@@ -262,10 +262,10 @@ function SetupInstructions({ account, onClose }: { account: Mt5Account; onClose:
             </ol>
           </div>
 
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-3">
+          <div className="rounded-md border border-chart-4/25 bg-chart-4/10 p-3">
             <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-chart-4" />
+              <p className="text-xs leading-relaxed text-foreground">
                 The EA only reads your trade data - it cannot execute trades or modify your account.
                 Keep MT5 open for real-time sync. Past trades from the last 7 days will sync on first run.
               </p>
@@ -361,7 +361,7 @@ function AccountCard({ account }: { account: Mt5Account }) {
               </p>
             </div>
             {isConnected ? (
-              <Wifi className="w-4 h-4 text-emerald-500 shrink-0" />
+              <Wifi className="h-4 w-4 shrink-0 text-profit" />
             ) : (
               <WifiOff className="w-4 h-4 text-muted-foreground shrink-0" />
             )}

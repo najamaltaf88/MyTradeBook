@@ -248,7 +248,7 @@ function findNearestEnvPath(): string | undefined {
     process.env.MYTRADEBOOK_ENV_PATH,
     path.join(process.cwd(), ".env"),
     path.join(path.dirname(process.execPath || ""), ".env"),
-    path.join(process.resourcesPath || "", ".env"),
+    path.join(((process as NodeJS.Process & { resourcesPath?: string }).resourcesPath) || "", ".env"),
     path.join(__dirname, "..", ".env"),
     path.join(__dirname, "..", "..", ".env"),
   ].filter((candidate): candidate is string => Boolean(candidate));

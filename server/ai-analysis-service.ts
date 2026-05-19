@@ -304,7 +304,7 @@ function findNearestEnvPath(): string | undefined {
     process.env.MYTRADEBOOK_ENV_PATH,
     path.join(process.cwd(), ".env"),
     path.join(path.dirname(process.execPath || ""), ".env"),
-    path.join(process.resourcesPath || "", ".env"),
+    path.join(((process as NodeJS.Process & { resourcesPath?: string }).resourcesPath) || "", ".env"),
     path.join(__dirname, "..", ".env"),
     path.join(__dirname, "..", "..", ".env"),
   ].filter((candidate): candidate is string => Boolean(candidate));
@@ -844,14 +844,28 @@ export class AIAnalysisService {
       addReviewCheck("Confirm trade duration and notes are accurate so style classification stays reliable.");
     }
 
+    const netPnl = dataset.summary.net_profit;
+    const pf =
+      dataset.summary.profit_factor >= 999
+        ? "∞"
+        : dataset.summary.profit_factor.toFixed(2);
     const mentorSummary =
       dataset.style_scope.matched_trades === 0
         ? `No ${dataset.style} trades matched the current dataset, so the coach cannot make a reliable style-specific read yet.`
-        : `Mentor read: ${dataset.style} style shows ${dataset.summary.win_rate.toFixed(1)}% win rate across ${dataset.summary.closed_trades} closed trades. The priority is to protect capital first, then reinforce the strongest repeatable edge.`;
+        : [
+            `Across ${dataset.summary.closed_trades} closed ${dataset.style === "all" ? "" : `${dataset.style} `}trades you are at ${dataset.summary.win_rate.toFixed(1)}% win rate, ${pf} profit factor, and ${netPnl >= 0 ? "+" : ""}${netPnl.toFixed(2)} net P&L.`,
+            insights.length > 0
+              ? `Main pattern: ${insights[0]!.message}`
+              : "No dominant leak stands out; keep logging with the same detail so drift is visible early.",
+          ]
+            .filter(Boolean)
+            .join(" ");
 
     const priorityFocus =
       recommendations[0] ||
-      `Stay disciplined inside the ${dataset.style} bucket and only review style-matched trades before changing rules.`;
+      (dataset.summary.profit_factor < 1 && dataset.summary.closed_trades >= 5
+        ? "Stop size increases until win rate and R:R stabilize above breakeven."
+        : `Stay disciplined inside the ${dataset.style} bucket and only change rules after reviewing style-matched trades.`);
 
     if (!sessionPlan.length) {
       addSessionPlan("Take only setups that fully match your checklist and base risk model.");

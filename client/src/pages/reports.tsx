@@ -372,21 +372,21 @@ async function downloadPDF(report: ReportData, tz: string = "UTC") {
 
 function StatusIcon({ ok }: { ok: boolean | null }) {
   if (ok === null) return null;
-  return ok ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-500" />;
+  return ok ? <CheckCircle2 className="w-4 h-4 text-profit" /> : <XCircle className="w-4 h-4 text-loss" />;
 }
 
 function EmotionBadge({ emotion, count }: { emotion: string; count: number }) {
   const colors: Record<string, string> = {
-    confident: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
-    calm: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20",
-    disciplined: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/20",
-    neutral: "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20",
-    fearful: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
-    greedy: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20",
-    anxious: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20",
-    frustrated: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20",
-    revenge: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
-    fomo: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20",
+    confident: "border border-profit/25 bg-profit/10 text-profit",
+    calm: "border border-primary/25 bg-primary/10 text-primary",
+    disciplined: "border border-chart-2/25 bg-chart-2/10 text-chart-2",
+    neutral: "border border-border bg-muted/50 text-muted-foreground",
+    fearful: "border border-chart-4/25 bg-chart-4/10 text-chart-4",
+    greedy: "border border-loss/25 bg-loss/10 text-loss",
+    anxious: "border border-chart-5/25 bg-chart-5/10 text-chart-5",
+    frustrated: "border border-loss/25 bg-loss/10 text-loss",
+    revenge: "border border-loss/30 bg-loss/12 text-loss",
+    fomo: "border border-chart-3/25 bg-chart-3/10 text-chart-3",
   };
   return (
     <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium", colors[emotion] || "bg-muted text-muted-foreground border-border")}>
@@ -541,27 +541,27 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-center" data-testid="stat-net-profit">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Net P&L</p>
-                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.netProfit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.netProfit >= 0 ? "text-profit" : "text-loss")}>
                       {report.summary.netProfit >= 0 ? "+" : ""}{formatCurrency(report.summary.netProfit)}
                     </p>
                   </div>
                   <div className="text-center" data-testid="stat-win-rate">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Win Rate</p>
-                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.winRate >= 50 ? "text-emerald-500" : "text-red-500")}>
+                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.winRate >= 50 ? "text-profit" : "text-loss")}>
                       {report.summary.winRate}%
                     </p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Win</p>
-                    <p className="text-xl font-bold font-mono mt-0.5 text-emerald-500">{formatCurrency(report.summary.avgWin)}</p>
+                    <p className="text-xl font-bold font-mono mt-0.5 text-profit">{formatCurrency(report.summary.avgWin)}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Loss</p>
-                    <p className="text-xl font-bold font-mono mt-0.5 text-red-500">{formatCurrency(report.summary.avgLoss)}</p>
+                    <p className="text-xl font-bold font-mono mt-0.5 text-loss">{formatCurrency(report.summary.avgLoss)}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Profit Factor</p>
-                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.profitFactor >= 1 ? "text-emerald-500" : "text-red-500")}>
+                    <p className={cn("text-xl font-bold font-mono mt-0.5", report.summary.profitFactor >= 1 ? "text-profit" : "text-loss")}>
                       {isPerfectProfitFactor(report.summary.profitFactor) ? "INF" : report.summary.profitFactor}
                     </p>
                   </div>
@@ -577,7 +577,7 @@ export default function ReportsPage() {
                   <Card className="page-fade-in stagger-2" data-testid="card-best-trade">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                        <TrendingUp className="w-4 h-4 text-profit" />
                         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Best Trade</span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -585,7 +585,7 @@ export default function ReportsPage() {
                           <p className="font-medium">{report.summary.bestTrade.symbol}</p>
                           <Badge variant="outline" className="text-[10px] mt-1">{report.summary.bestTrade.type}</Badge>
                         </div>
-                        <p className="text-lg font-bold font-mono text-emerald-500">+{formatCurrency(report.summary.bestTrade.profit)}</p>
+                        <p className="text-lg font-bold font-mono text-profit">+{formatCurrency(report.summary.bestTrade.profit)}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -594,7 +594,7 @@ export default function ReportsPage() {
                   <Card className="page-fade-in stagger-2" data-testid="card-worst-trade">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <TrendingDown className="w-4 h-4 text-red-500" />
+                        <TrendingDown className="w-4 h-4 text-loss" />
                         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Worst Trade</span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -602,7 +602,7 @@ export default function ReportsPage() {
                           <p className="font-medium">{report.summary.worstTrade.symbol}</p>
                           <Badge variant="outline" className="text-[10px] mt-1">{report.summary.worstTrade.type}</Badge>
                         </div>
-                        <p className="text-lg font-bold font-mono text-red-500">{formatCurrency(report.summary.worstTrade.profit)}</p>
+                        <p className="text-lg font-bold font-mono text-loss">{formatCurrency(report.summary.worstTrade.profit)}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -626,7 +626,7 @@ export default function ReportsPage() {
                             <span className="text-xs text-muted-foreground">{s.count} trades</span>
                             <span className="text-xs text-muted-foreground">{s.winRate}% WR</span>
                           </div>
-                          <span className={cn("text-sm font-mono font-medium", s.profit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                          <span className={cn("text-sm font-mono font-medium", s.profit >= 0 ? "text-profit" : "text-loss")}>
                             {s.profit >= 0 ? "+" : ""}{formatCurrency(s.profit)}
                           </span>
                         </div>
@@ -663,7 +663,7 @@ export default function ReportsPage() {
                               </td>
                               <td className="p-2 text-right text-sm font-mono">{d.trades}</td>
                               <td className="p-2 text-right text-sm font-mono">{d.winRate}%</td>
-                              <td className={cn("p-2 text-right text-sm font-mono font-medium", d.profit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                              <td className={cn("p-2 text-right text-sm font-mono font-medium", d.profit >= 0 ? "text-profit" : "text-loss")}>
                                 {d.profit >= 0 ? "+" : ""}{formatCurrency(d.profit)}
                               </td>
                             </tr>
@@ -694,7 +694,7 @@ export default function ReportsPage() {
                         <span className="text-sm">Profit Target</span>
                       </div>
                       <div className="text-right">
-                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.actualProfit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.actualProfit >= 0 ? "text-profit" : "text-loss")}>
                           {formatCurrency(report.goalCompliance.actualProfit)}
                         </span>
                         <span className="text-xs text-muted-foreground ml-1">/ {formatCurrency(report.goalCompliance.profitTarget)}</span>
@@ -708,7 +708,7 @@ export default function ReportsPage() {
                         <span className="text-sm">Max Loss Limit</span>
                       </div>
                       <div className="text-right">
-                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.lossWithinLimit ? "text-emerald-500" : "text-red-500")}>
+                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.lossWithinLimit ? "text-profit" : "text-loss")}>
                           {formatCurrency(report.goalCompliance.actualLoss)}
                         </span>
                         <span className="text-xs text-muted-foreground ml-1">/ {formatCurrency(report.goalCompliance.maxLoss)}</span>
@@ -722,7 +722,7 @@ export default function ReportsPage() {
                         <span className="text-sm">Win Rate Target</span>
                       </div>
                       <div className="text-right">
-                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.winRateMet ? "text-emerald-500" : "text-red-500")}>
+                        <span className={cn("text-sm font-mono font-medium", report.goalCompliance.winRateMet ? "text-profit" : "text-loss")}>
                           {report.goalCompliance.actualWinRate}%
                         </span>
                         <span className="text-xs text-muted-foreground ml-1">/ {report.goalCompliance.winRateTarget}%</span>
@@ -761,15 +761,15 @@ export default function ReportsPage() {
                 <div className="space-y-1.5">
                   {report.ruleCompliance.map((rule) => (
                     <div key={rule.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/20 text-sm">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-profit shrink-0" />
                       <span className="text-[10px] text-muted-foreground uppercase w-16 shrink-0">{rule.category}</span>
                       <span className="flex-1">{rule.title}</span>
                     </div>
                   ))}
                 </div>
                 {report.journalRate < 100 && report.summary.totalTrades > 0 && (
-                  <div className="mt-3 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
-                    <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                  <div className="mt-3 rounded-md border border-chart-4/25 bg-chart-4/10 p-2">
+                    <p className="flex items-center gap-1.5 text-xs text-chart-4">
                       <BookOpen className="w-3.5 h-3.5" />
                       {report.journalRate}% of trades have journal entries. Document every trade to track rule adherence.
                     </p>
@@ -801,7 +801,7 @@ export default function ReportsPage() {
             <Card className="page-fade-in stagger-5 border-primary/20">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Lightbulb className="w-4 h-4 text-amber-500" />
+                  <Lightbulb className="w-4 h-4 text-chart-4" />
                   Professional Suggestions
                 </CardTitle>
               </CardHeader>
@@ -809,7 +809,7 @@ export default function ReportsPage() {
                 <div className="space-y-3">
                   {report.suggestions.map((s, i) => (
                     <div key={i} className="flex gap-3 p-3 rounded-lg bg-muted/30" data-testid={`suggestion-${i}`}>
-                      <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-chart-4" />
                       <p className="text-sm leading-relaxed">{s}</p>
                     </div>
                   ))}
@@ -850,12 +850,12 @@ export default function ReportsPage() {
                           <td className="p-2 text-right text-sm font-mono">{t.volume}</td>
                           <td className="p-2 text-right text-sm font-mono">
                             {t.pips != null ? (
-                              <span className={cn(t.pips >= 0 ? "text-emerald-500" : "text-red-500")}>
+                              <span className={cn(t.pips >= 0 ? "text-profit" : "text-loss")}>
                                 {t.pips >= 0 ? "+" : ""}{t.pips}
                               </span>
                             ) : "-"}
                           </td>
-                          <td className={cn("p-2 text-right text-sm font-mono font-medium", (t.profit || 0) >= 0 ? "text-emerald-500" : "text-red-500")}>
+                          <td className={cn("p-2 text-right text-sm font-mono font-medium", (t.profit || 0) >= 0 ? "text-profit" : "text-loss")}>
                             {(t.profit || 0) >= 0 ? "+" : ""}{formatCurrency(t.profit || 0)}
                           </td>
                           <td className="p-2 text-sm">

@@ -37,9 +37,9 @@ export class AppErrorBoundary extends React.Component<Props, State> {
 
     return (
       <div className="min-h-full w-full flex items-center justify-center p-6 bg-background">
-        <div className="w-full max-w-lg rounded-lg border border-red-500/40 bg-red-500/5 p-6 space-y-4">
+        <div className="w-full max-w-lg space-y-4 rounded-lg border border-loss/30 bg-loss/8 p-6">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-loss" />
             <div>
               <h2 className="text-base font-semibold">App error</h2>
               <p className="text-sm text-muted-foreground mt-1">

@@ -35,6 +35,7 @@ export const trades = z.object({
   closeTime: dateLikeSchema.nullable().optional(),
   openPrice: z.number(),
   closePrice: z.number().nullable().optional(),
+  markPrice: z.number().nullable().optional(),
   volume: z.number(),
   profit: z.number().optional().default(0),
   commission: z.number().optional().default(0),
@@ -53,6 +54,8 @@ export const trades = z.object({
   aiScore: z.number().nullable().optional(),
   aiAnalysisCache: z.string().nullable().optional(),
   aiCachedAt: dateLikeSchema.nullable().optional(),
+  reviewPending: z.boolean().optional().default(false),
+  reviewCompletedAt: dateLikeSchema.nullable().optional(),
 });
 
 export const tradeNotes = z.object({
@@ -218,6 +221,7 @@ const TRADE_EMOTIONS = [
 export const updateTradeJournalSchema = z.object({
   reason: z.string().max(500).optional(),
   logic: z.string().max(2000).optional(),
+  reviewPending: z.boolean().optional(),
   emotion: z
     .string()
     .max(32)
@@ -268,6 +272,7 @@ export const webhookTradeSchema = z.object({
   closeTime: z.string().optional(),
   openPrice: z.number().positive("Open price must be positive").optional(),
   closePrice: z.number().positive("Close price must be positive").optional(),
+  currentPrice: z.number().positive("Current price must be positive").optional(),
   volume: z.number().positive("Volume must be positive").optional(),
   profit: z.number().optional(),
   commission: z.number().optional(),
@@ -288,6 +293,27 @@ export const insertTradeSchema = trades.omit({
 export const insertTradeNoteSchema = tradeNotes.omit({
   id: true,
   createdAt: true,
+});
+
+export const tradeReviewSchema = z.object({
+  coreChecks: z.object({
+    followedPlan: z.boolean(),
+    slBeforeEntry: z.boolean(),
+    riskWithinLimits: z.boolean(),
+    exitPerPlan: z.boolean(),
+    emotionControlled: z.boolean(),
+    noRevengeOrFomo: z.boolean(),
+  }),
+  playbookRules: z
+    .array(
+      z.object({
+        ruleId: z.string().min(1),
+        followed: z.boolean(),
+      }),
+    )
+    .optional()
+    .default([]),
+  lesson: z.string().max(2000).optional(),
 });
 
 export type Mt5Account = z.infer<typeof mt5Accounts>;

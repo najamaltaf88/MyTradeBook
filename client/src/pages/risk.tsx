@@ -36,17 +36,17 @@ interface RiskProfile {
 function getRiskScoreColor(score: string): string {
   switch (score) {
     case "A+":
-      return "bg-green-100 text-green-800 dark:bg-green-950/35 dark:text-green-300";
+      return "border border-profit/30 bg-profit/12 text-profit";
     case "A":
-      return "bg-green-100 text-green-800 dark:bg-green-950/35 dark:text-green-300";
+      return "border border-profit/30 bg-profit/12 text-profit";
     case "B":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-950/35 dark:text-blue-300";
+      return "border border-chart-2/30 bg-chart-2/12 text-chart-2";
     case "C":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-950/35 dark:text-yellow-300";
+      return "border border-chart-4/30 bg-chart-4/12 text-chart-4";
     case "D":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-950/35 dark:text-orange-300";
+      return "border border-chart-5/30 bg-chart-5/12 text-chart-5";
     case "F":
-      return "bg-red-100 text-red-800 dark:bg-red-950/35 dark:text-red-300";
+      return "border border-loss/30 bg-loss/12 text-loss";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -59,9 +59,9 @@ function formatRatio(value: number): string {
 
 function MetricCard({ label, value, unit = "", warning = false }: { label: string; value: number | string; unit?: string; warning?: boolean }) {
   return (
-    <div className={`p-4 rounded-lg ${warning ? "bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-900/40" : "bg-muted/35"}`}>
+    <div className={`rounded-lg p-4 ${warning ? "border border-loss/25 bg-loss/8" : "bg-muted/35"}`}>
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`text-2xl font-bold ${warning ? "text-red-600" : "text-foreground"}`}>
+      <p className={`text-2xl font-bold ${warning ? "text-loss" : "text-foreground"}`}>
         {typeof value === "number" ? value.toFixed(2) : value}
         {unit && <span className="text-sm ml-1">{unit}</span>}
       </p>
@@ -175,37 +175,37 @@ export default function RiskPage() {
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
-            <p className={`text-2xl font-bold ${profile.sharpeRatio > 1 ? "text-green-600" : "text-red-600"}`}>{profile.sharpeRatio.toFixed(2)}</p>
+            <p className={`text-2xl font-bold ${profile.sharpeRatio > 1 ? "text-profit" : "text-loss"}`}>{profile.sharpeRatio.toFixed(2)}</p>
             <p className="text-xs text-muted-foreground">Risk-adjusted returns (&gt;1 is good)</p>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Kelly Criterion</p>
-            <p className="text-2xl font-bold text-blue-600">{(profile.kellyCriterion * 100).toFixed(1)}%</p>
+            <p className="text-2xl font-bold text-primary">{(profile.kellyCriterion * 100).toFixed(1)}%</p>
             <p className="text-xs text-muted-foreground">Theoretical max risk/trade</p>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Risk of Ruin</p>
-            <p className={`text-2xl font-bold ${profile.riskOfRuin > 0.1 ? "text-red-600" : "text-green-600"}`}>{(profile.riskOfRuin * 100).toFixed(1)}%</p>
+            <p className={`text-2xl font-bold ${profile.riskOfRuin > 0.1 ? "text-loss" : "text-profit"}`}>{(profile.riskOfRuin * 100).toFixed(1)}%</p>
             <p className="text-xs text-muted-foreground">Probability of account loss</p>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Max Drawdown</p>
-            <p className="text-2xl font-bold text-orange-600">${profile.maxDrawdown.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-chart-4">${profile.maxDrawdown.toFixed(2)}</p>
             <p className="text-xs text-muted-foreground">{profile.maxDrawdownRecoveryDays} days to recover</p>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Current Drawdown</p>
-            <p className={`text-2xl font-bold ${profile.currentDrawdown > 0 ? "text-red-600" : "text-green-600"}`}>${profile.currentDrawdown.toFixed(2)}</p>
+            <p className={`text-2xl font-bold ${profile.currentDrawdown > 0 ? "text-loss" : "text-profit"}`}>${profile.currentDrawdown.toFixed(2)}</p>
             <p className="text-xs text-muted-foreground">From all-time peak</p>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Recommended Risk</p>
-            <p className="text-2xl font-bold text-purple-600">{profile.recommendedRiskPercent.toFixed(2)}%</p>
+            <p className="text-2xl font-bold text-chart-3">{profile.recommendedRiskPercent.toFixed(2)}%</p>
             <p className="text-xs text-muted-foreground">Per trade sizing</p>
           </div>
         </CardContent>
@@ -223,7 +223,7 @@ export default function RiskPage() {
               <p className="text-sm text-muted-foreground">${profile.profitConsistency.toFixed(2)}</p>
             </div>
             <div className="w-full bg-muted rounded-full h-2">
-              <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min((100 - profile.profitConsistency / 50), 100)}%` }}></div>
+              <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min((100 - profile.profitConsistency / 50), 100)}%` }}></div>
             </div>
             <p className="text-xs text-muted-foreground">Lower = more consistent profits</p>
           </div>
@@ -234,7 +234,7 @@ export default function RiskPage() {
               <p className="text-sm text-muted-foreground">{profile.riskConsistency.toFixed(0)}%</p>
             </div>
             <div className="w-full bg-muted rounded-full h-2">
-              <div className={`h-2 rounded-full ${profile.riskConsistency > 80 ? "bg-green-600" : profile.riskConsistency > 60 ? "bg-yellow-600" : "bg-red-600"}`} style={{ width: `${profile.riskConsistency}%` }}></div>
+              <div className={`h-2 rounded-full ${profile.riskConsistency > 80 ? "bg-profit" : profile.riskConsistency > 60 ? "bg-chart-4" : "bg-loss"}`} style={{ width: `${profile.riskConsistency}%` }}></div>
             </div>
             <p className="text-xs text-muted-foreground">Higher = more consistent risk sizing</p>
           </div>

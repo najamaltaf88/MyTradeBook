@@ -44,7 +44,16 @@ import {
   LineChart,
   NotebookPen,
 } from "lucide-react";
-import { formatCurrency, formatDate, formatDuration, getProfitColor, cn, getTradeNetPnl } from "@/lib/utils";
+import {
+  formatCurrency,
+  formatDate,
+  formatDuration,
+  formatDayKeyInTimeZone,
+  getProfitColor,
+  cn,
+  getTradeNetPnl,
+} from "@/lib/utils";
+import { compressTradeScreenshot } from "@/lib/image-compress";
 import { apiRequest, buildAuthHeaders, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAccount } from "@/hooks/use-account";
@@ -55,16 +64,16 @@ import type { Trade, TradeNote } from "@shared/schema";
 import { calculateTradePips, getTradingSession } from "@shared/trade-utils";
 
 const EMOTION_OPTIONS = [
-  { value: "confident", label: "Confident", color: "text-emerald-500 bg-emerald-500/10" },
-  { value: "calm", label: "Calm", color: "text-blue-500 bg-blue-500/10" },
-  { value: "fearful", label: "Fearful", color: "text-amber-500 bg-amber-500/10" },
-  { value: "greedy", label: "Greedy", color: "text-orange-500 bg-orange-500/10" },
-  { value: "anxious", label: "Anxious", color: "text-yellow-500 bg-yellow-500/10" },
-  { value: "frustrated", label: "Frustrated", color: "text-red-500 bg-red-500/10" },
-  { value: "revenge", label: "Revenge", color: "text-red-600 bg-red-600/10" },
-  { value: "fomo", label: "FOMO", color: "text-purple-500 bg-purple-500/10" },
+  { value: "confident", label: "Confident", color: "text-profit bg-profit/10" },
+  { value: "calm", label: "Calm", color: "text-primary bg-primary/10" },
+  { value: "fearful", label: "Fearful", color: "text-chart-4 bg-chart-4/10" },
+  { value: "greedy", label: "Greedy", color: "text-chart-5 bg-chart-5/10" },
+  { value: "anxious", label: "Anxious", color: "text-chart-4 bg-chart-4/10" },
+  { value: "frustrated", label: "Frustrated", color: "text-loss bg-loss/10" },
+  { value: "revenge", label: "Revenge", color: "text-loss bg-loss/12" },
+  { value: "fomo", label: "FOMO", color: "text-chart-3 bg-chart-3/10" },
   { value: "neutral", label: "Neutral", color: "text-muted-foreground bg-muted" },
-  { value: "disciplined", label: "Disciplined", color: "text-cyan-500 bg-cyan-500/10" },
+  { value: "disciplined", label: "Disciplined", color: "text-chart-2 bg-chart-2/10" },
 ];
 
 class TradesErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; message: string }> {
@@ -102,6 +111,13 @@ type TradeAiAnalysis = {
   grade: "A+" | "A" | "B" | "C" | "D" | "F";
   score: number;
   session: string;
+  executiveSummary?: string;
+  metrics?: {
+    rrRatio: number | null;
+    rMultiple: number | null;
+    durationMinutes: number | null;
+    netPnl: number;
+  };
   strengths: string[];
   improvements: string[];
   suggestions: string[];
@@ -200,33 +216,34 @@ function patchTradeCaches(tradeId: string, updater: (trade: Trade) => Trade) {
 }
 
 function resolveTradePips(
-  trade: Pick<Trade, "symbol" | "type" | "openPrice" | "closePrice" | "isClosed" | "pips">,
+  trade: Pick<
+    Trade,
+    "symbol" | "type" | "openPrice" | "closePrice" | "markPrice" | "isClosed" | "pips"
+  >,
 ) {
+  const exit =
+    trade.isClosed
+      ? trade.closePrice
+      : trade.markPrice ?? trade.closePrice;
   if (
-    trade.isClosed &&
     typeof trade.openPrice === "number" &&
     Number.isFinite(trade.openPrice) &&
-    typeof trade.closePrice === "number" &&
-    Number.isFinite(trade.closePrice)
+    typeof exit === "number" &&
+    Number.isFinite(exit)
   ) {
-    return calculateTradePips(
-      trade.symbol,
-      trade.type,
-      trade.openPrice,
-      trade.closePrice,
-    );
+    return calculateTradePips(trade.symbol, trade.type, trade.openPrice, exit);
   }
 
   return trade.pips ?? null;
 }
 
 function gradeClass(grade: TradeAiAnalysis["grade"]) {
-  if (grade === "A+") return "bg-emerald-600/15 text-emerald-400 border-emerald-500/40";
-  if (grade === "A") return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-  if (grade === "B") return "bg-green-500/10 text-green-500 border-green-500/20";
-  if (grade === "C") return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-  if (grade === "D") return "bg-orange-500/10 text-orange-500 border-orange-500/20";
-  return "bg-red-500/10 text-red-500 border-red-500/20";
+  if (grade === "A+") return "border border-profit/40 bg-profit/15 text-profit";
+  if (grade === "A") return "border border-profit/25 bg-profit/10 text-profit";
+  if (grade === "B") return "border border-chart-2/25 bg-chart-2/10 text-chart-2";
+  if (grade === "C") return "border border-chart-4/25 bg-chart-4/10 text-chart-4";
+  if (grade === "D") return "border border-chart-5/25 bg-chart-5/10 text-chart-5";
+  return "border border-loss/25 bg-loss/10 text-loss";
 }
 
 function normalizeTradeGrade(value: string | null | undefined): TradeAiAnalysis["grade"] | null {
@@ -289,13 +306,13 @@ const TradeTableRow = memo(function TradeTableRow({
           <div
             className={cn(
               "w-6 h-6 rounded flex items-center justify-center shrink-0",
-              trade.type === "BUY" ? "bg-emerald-500/10" : "bg-red-500/10",
+              trade.type === "BUY" ? "bg-profit/10" : "bg-loss/10",
             )}
           >
             {trade.type === "BUY" ? (
-              <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+              <ArrowUpRight className="w-3 h-3 text-profit" />
             ) : (
-              <ArrowDownRight className="w-3 h-3 text-red-500" />
+              <ArrowDownRight className="w-3 h-3 text-loss" />
             )}
           </div>
           <span className="text-sm font-medium font-mono">{trade.symbol}</span>
@@ -349,9 +366,9 @@ const TradeTableRow = memo(function TradeTableRow({
       </td>
       <td className="p-3 hidden md:table-cell">
         <div className="flex items-center justify-center gap-1">
-          {trade.screenshotUrl && <Image className="w-3 h-3 text-blue-500" />}
-          {trade.reason && <Brain className="w-3 h-3 text-purple-500" />}
-          {trade.logic && <Lightbulb className="w-3 h-3 text-amber-500" />}
+          {trade.screenshotUrl && <Image className="w-3 h-3 text-primary" />}
+          {trade.reason && <Brain className="w-3 h-3 text-chart-3" />}
+          {trade.logic && <Lightbulb className="w-3 h-3 text-chart-4" />}
           {emotionOpt && (
             <span className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded-full", emotionOpt.color)}>
               {emotionOpt.label}
@@ -361,8 +378,11 @@ const TradeTableRow = memo(function TradeTableRow({
         </div>
       </td>
       <td className="p-3 text-right hidden md:table-cell">
-        <Badge variant={trade.isClosed ? "outline" : "default"} className="text-[10px]">
-          {trade.isClosed ? "Closed" : "Open"}
+        <Badge
+          variant={trade.isClosed ? "outline" : "default"}
+          className={cn("text-[10px]", !trade.isClosed && "animate-pulse border-primary/40")}
+        >
+          {trade.isClosed ? "Closed" : "Floating"}
         </Badge>
       </td>
     </tr>
@@ -388,6 +408,7 @@ function TradeDetailDialog({
   const [editingReason, setEditingReason] = useState(false);
   const [editingLogic, setEditingLogic] = useState(false);
   const [screenshotMissing, setScreenshotMissing] = useState(false);
+  const [screenshotBusy, setScreenshotBusy] = useState<"compressing" | "uploading" | null>(null);
   const [clipboardPending, setClipboardPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -416,6 +437,7 @@ function TradeDetailDialog({
   const { data: aiAnalysis, isLoading: aiLoading } = useQuery<TradeAiAnalysis>({
     queryKey: ["/api/ai/trades", trade?.id, analysisStyle, accountId || "__all__"],
     enabled: !!trade,
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("style", analysisStyle);
@@ -532,8 +554,8 @@ function TradeDetailDialog({
     },
   });
 
-  const submitScreenshotFile = (file: File, mode: "upload" | "paste" = "upload") => {
-    if (!file) return;
+  const submitScreenshotFile = async (file: File, mode: "upload" | "paste" = "upload") => {
+    if (!file || screenshotBusy || uploadScreenshot.isPending) return;
     if (!file.type.startsWith("image/")) {
       toast({ title: "Unsupported file", description: "Only image files can be attached.", variant: "destructive" });
       return;
@@ -542,9 +564,23 @@ function TradeDetailDialog({
       toast({ title: "Image too large", description: "Please keep screenshots under 10MB.", variant: "destructive" });
       return;
     }
-    uploadScreenshot.mutate(file, {
+    setScreenshotBusy("compressing");
+    let prepared = file;
+    try {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 0);
+      });
+      prepared = await compressTradeScreenshot(file);
+    } catch {
+      prepared = file;
+    }
+    setScreenshotBusy("uploading");
+    uploadScreenshot.mutate(prepared, {
       onSuccess: () => {
         toast({ title: mode === "paste" ? "Screenshot pasted" : "Screenshot uploaded" });
+      },
+      onSettled: () => {
+        setScreenshotBusy(null);
       },
     });
   };
@@ -652,19 +688,19 @@ function TradeDetailDialog({
           {(currentTrade.stopLoss || currentTrade.takeProfit || pips !== null) && (
             <div className="grid grid-cols-2 gap-2">
               {currentTrade.stopLoss && (
-                <div className="bg-red-500/5 border border-red-500/10 rounded-md p-2.5 space-y-0.5">
+                <div className="space-y-0.5 rounded-md border border-loss/15 bg-loss/5 p-2.5">
                   <div className="flex items-center gap-1">
-                    <Shield className="w-3 h-3 text-red-500" />
-                    <p className="text-[10px] text-red-500 uppercase tracking-wider font-medium">Stop Loss</p>
+                    <Shield className="w-3 h-3 text-loss" />
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-loss">Stop Loss</p>
                   </div>
                   <p className="text-sm font-mono font-medium">{currentTrade.stopLoss}</p>
                 </div>
               )}
               {currentTrade.takeProfit && (
-                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-md p-2.5 space-y-0.5">
+                <div className="space-y-0.5 rounded-md border border-profit/15 bg-profit/5 p-2.5">
                   <div className="flex items-center gap-1">
-                    <Target className="w-3 h-3 text-emerald-500" />
-                    <p className="text-[10px] text-emerald-500 uppercase tracking-wider font-medium">Take Profit</p>
+                    <Target className="w-3 h-3 text-profit" />
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-profit">Take Profit</p>
                   </div>
                   <p className="text-sm font-mono font-medium">{currentTrade.takeProfit}</p>
                 </div>
@@ -673,14 +709,14 @@ function TradeDetailDialog({
                 <TradeMetricBox
                   label="Pips"
                   value={`${pips >= 0 ? "+" : ""}${pips}`}
-                  color={pips >= 0 ? "text-emerald-500" : "text-red-500"}
+                  color={pips >= 0 ? "text-profit" : "text-loss"}
                 />
               )}
               {rrRatio !== null && (
                 <TradeMetricBox
                   label="Risk : Reward"
                   value={`1 : ${rrRatio}`}
-                  color={rrRatio >= 1 ? "text-emerald-500" : "text-amber-500"}
+                  color={rrRatio >= 1 ? "text-profit" : "text-chart-4"}
                 />
               )}
             </div>
@@ -694,7 +730,7 @@ function TradeDetailDialog({
                     <TrendingUp className="w-3 h-3 text-muted-foreground" />
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">R-Multiple</p>
                   </div>
-                  <p className={cn("text-sm font-mono font-medium", rMultiple >= 0 ? "text-emerald-500" : "text-red-500")}>
+                  <p className={cn("text-sm font-mono font-medium", rMultiple >= 0 ? "text-profit" : "text-loss")}>
                     {rMultiple >= 0 ? "+" : ""}{rMultiple}R
                   </p>
                 </div>
@@ -705,7 +741,7 @@ function TradeDetailDialog({
                     <Ruler className="w-3 h-3 text-muted-foreground" />
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">TP Capture</p>
                   </div>
-                  <p className={cn("text-sm font-mono font-medium", mfe >= 80 ? "text-emerald-500" : mfe >= 50 ? "text-amber-500" : "text-red-500")}>
+                  <p className={cn("text-sm font-mono font-medium", mfe >= 80 ? "text-profit" : mfe >= 50 ? "text-chart-4" : "text-loss")}>
                     {mfe}%
                   </p>
                 </div>
@@ -722,7 +758,7 @@ function TradeDetailDialog({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Commission</span>
-              <span className="font-mono text-red-500">{formatCurrency(currentTrade.commission || 0)}</span>
+              <span className="font-mono text-loss">{formatCurrency(currentTrade.commission || 0)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Swap</span>
@@ -748,7 +784,7 @@ function TradeDetailDialog({
                   size="sm"
                   variant="outline"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadScreenshot.isPending}
+                  disabled={Boolean(screenshotBusy) || uploadScreenshot.isPending}
                 >
                   <Upload className="mr-2 h-3.5 w-3.5" />
                   Upload file
@@ -758,11 +794,16 @@ function TradeDetailDialog({
                   size="sm"
                   variant="outline"
                   onClick={handleClipboardRead}
-                  disabled={uploadScreenshot.isPending || clipboardPending}
+                  disabled={Boolean(screenshotBusy) || uploadScreenshot.isPending || clipboardPending}
                 >
                   <ClipboardPaste className="mr-2 h-3.5 w-3.5" />
                   {clipboardPending ? "Checking clipboard..." : "Paste screenshot"}
                 </Button>
+                {screenshotBusy && (
+                  <span className="text-xs text-muted-foreground self-center">
+                    {screenshotBusy === "compressing" ? "Optimizing image…" : "Uploading…"}
+                  </span>
+                )}
               </div>
             </div>
             {currentTrade.screenshotUrl && !screenshotMissing ? (
@@ -771,6 +812,8 @@ function TradeDetailDialog({
                   src={currentTrade.screenshotUrl}
                   alt="Trade screenshot"
                   className="rounded-xl w-full max-h-56 object-cover border cursor-pointer"
+                  loading="lazy"
+                  decoding="async"
                   onClick={() => window.open(currentTrade.screenshotUrl!, "_blank")}
                   onError={() => setScreenshotMissing(true)}
                   data-testid="img-trade-screenshot"
@@ -934,6 +977,21 @@ function TradeDetailDialog({
                   <span className="text-xs text-muted-foreground">Score {aiAnalysis.score.toFixed(1)} / 100</span>
                   <Badge variant="outline" className="text-[10px]">{aiAnalysis.session}</Badge>
                 </div>
+                {(aiAnalysis.executiveSummary || aiAnalysis.metrics) && (
+                  <div className="rounded-md border border-border bg-card p-2.5">
+                    {aiAnalysis.executiveSummary && (
+                      <p className="text-xs leading-relaxed text-foreground">{aiAnalysis.executiveSummary}</p>
+                    )}
+                    {aiAnalysis.metrics && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {aiAnalysis.metrics.rrRatio != null && `Planned R:R ${aiAnalysis.metrics.rrRatio}:1`}
+                        {aiAnalysis.metrics.durationMinutes != null && ` · Hold ${aiAnalysis.metrics.durationMinutes}m`}
+                        {typeof aiAnalysis.metrics.netPnl === "number" &&
+                          ` · Net ${aiAnalysis.metrics.netPnl >= 0 ? "+" : ""}${formatCurrency(aiAnalysis.metrics.netPnl)}`}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="bg-muted/40 rounded-md p-2">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Strengths</p>
@@ -1035,10 +1093,16 @@ function TradeDetailDialog({
   );
 }
 
+function readDayFilterFromUrl(): string | null {
+  const day = new URLSearchParams(window.location.search).get("day");
+  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 function TradesPageInner() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dayFilter, setDayFilter] = useState<string | null>(() => readDayFilterFromUrl());
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [visibleCount, setVisibleCount] = useState(100);
   const { selectedAccountId, queryParam } = useAccount();
@@ -1059,8 +1123,15 @@ function TradesPageInner() {
   const searchTerm = deferredSearch.trim().toLowerCase();
 
   useEffect(() => {
+    const syncDay = () => setDayFilter(readDayFilterFromUrl());
+    syncDay();
+    window.addEventListener("popstate", syncDay);
+    return () => window.removeEventListener("popstate", syncDay);
+  }, []);
+
+  useEffect(() => {
     setVisibleCount(100);
-  }, [searchTerm, typeFilter, statusFilter, selectedAccountId]);
+  }, [searchTerm, typeFilter, statusFilter, selectedAccountId, dayFilter]);
 
   const filteredResult = useMemo(() => {
     const filteredTrades: Trade[] = [];
@@ -1075,6 +1146,10 @@ function TradesPageInner() {
       if (typeFilter !== "all" && trade.type !== typeFilter) continue;
       if (statusFilter === "open" && trade.isClosed) continue;
       if (statusFilter === "closed" && !trade.isClosed) continue;
+      if (dayFilter) {
+        if (!trade.isClosed || !trade.closeTime) continue;
+        if (formatDayKeyInTimeZone(trade.closeTime, timezone) !== dayFilter) continue;
+      }
 
       filteredTrades.push(trade);
 
@@ -1091,6 +1166,13 @@ function TradesPageInner() {
       ? Math.round((journaledCount / filteredTrades.length) * 100)
       : 0;
 
+    filteredTrades.sort((a, b) => {
+      if (a.isClosed !== b.isClosed) return a.isClosed ? 1 : -1;
+      const at = new Date(b.openTime).getTime();
+      const bt = new Date(a.openTime).getTime();
+      return at - bt;
+    });
+
     return {
       filtered: filteredTrades,
       wins,
@@ -1101,7 +1183,7 @@ function TradesPageInner() {
       averageNet,
       journalCompletion,
     };
-  }, [trades, searchTerm, typeFilter, statusFilter]);
+  }, [trades, searchTerm, typeFilter, statusFilter, dayFilter, timezone]);
 
   const filtered = filteredResult.filtered;
 
@@ -1171,7 +1253,7 @@ function TradesPageInner() {
                 <LineChart className="h-3.5 w-3.5" />
                 Net P&L
               </div>
-              <div className={cn("mt-2 text-3xl font-semibold", totalPnl >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300")}>
+              <div className={cn("mt-2 text-3xl font-semibold", totalPnl >= 0 ? "text-profit" : "text-loss")}>
                 {totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">Average {averageNet >= 0 ? "+" : ""}{formatCurrency(averageNet)} per visible trade</div>
@@ -1204,6 +1286,24 @@ function TradesPageInner() {
 
       <Card className="border-border bg-card shadow-sm page-fade-in stagger-1">
         <CardContent className="flex flex-wrap gap-3 p-4">
+          {dayFilter && (
+            <Badge variant="secondary" className="gap-2 px-3 py-1.5">
+              Closed on {dayFilter}
+              <button
+                type="button"
+                className="rounded-full hover:bg-muted px-1 text-muted-foreground"
+                onClick={() => {
+                  setDayFilter(null);
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("day");
+                  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+                }}
+                aria-label="Clear day filter"
+              >
+                ×
+              </button>
+            </Badge>
+          )}
           <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input

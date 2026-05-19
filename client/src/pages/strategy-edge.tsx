@@ -121,15 +121,15 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 function getRecommendationColor(rec: string): string {
   switch (rec) {
     case "EXPAND":
-      return "bg-green-100 text-green-800 dark:bg-green-950/35 dark:text-green-300";
+      return "border border-profit/30 bg-profit/12 text-profit";
     case "INCREASE":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-950/35 dark:text-blue-300";
+      return "border border-chart-2/30 bg-chart-2/12 text-chart-2";
     case "NEUTRAL":
       return "bg-muted text-muted-foreground";
     case "REDUCE":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-950/35 dark:text-orange-300";
+      return "border border-chart-4/30 bg-chart-4/12 text-chart-4";
     case "STOP":
-      return "bg-red-100 text-red-800 dark:bg-red-950/35 dark:text-red-300";
+      return "border border-loss/30 bg-loss/12 text-loss";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -153,7 +153,7 @@ function conceptDraftFromNote(note: StrategyConceptNote): ConceptDraft {
 
 function StrategyCard({ strategy }: { strategy: StrategyStatistics }) {
   return (
-    <Card className={`border-l-4 ${strategy.recommendation === "STOP" ? "border-l-red-500" : strategy.recommendation === "EXPAND" ? "border-l-green-500" : "border-l-blue-500"}`}>
+    <Card className={`border-l-4 ${strategy.recommendation === "STOP" ? "border-l-loss" : strategy.recommendation === "EXPAND" ? "border-l-profit" : "border-l-primary"}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex-1">
@@ -167,20 +167,20 @@ function StrategyCard({ strategy }: { strategy: StrategyStatistics }) {
         <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-2xl bg-muted/35 p-3">
             <p className="text-xs text-muted-foreground">Win Rate</p>
-            <p className={`font-bold ${strategy.winRate > 0.5 ? "text-green-600" : "text-red-600"}`}>{(strategy.winRate * 100).toFixed(0)}%</p>
+            <p className={`font-bold ${strategy.winRate > 0.5 ? "text-profit" : "text-loss"}`}>{(strategy.winRate * 100).toFixed(0)}%</p>
           </div>
           <div className="rounded-2xl bg-muted/35 p-3">
             <p className="text-xs text-muted-foreground">Profit Factor</p>
-            <p className={`font-bold ${strategy.profitFactor > 1.5 ? "text-green-600" : strategy.profitFactor > 1 ? "text-blue-600" : "text-red-600"}`}>
+            <p className={`font-bold ${strategy.profitFactor > 1.5 ? "text-profit" : strategy.profitFactor > 1 ? "text-primary" : "text-loss"}`}>
               {formatRatio(strategy.profitFactor)}
             </p>
           </div>
           <div className="rounded-2xl bg-muted/35 p-3">
             <p className="text-xs text-muted-foreground">Expectancy</p>
-            <p className={`font-bold ${strategy.expectancy > 0 ? "text-green-600" : "text-red-600"}`}>${strategy.expectancy.toFixed(2)}</p>
+            <p className={`font-bold ${strategy.expectancy > 0 ? "text-profit" : "text-loss"}`}>${strategy.expectancy.toFixed(2)}</p>
           </div>
           <div className="rounded-2xl bg-muted/35 p-3">
-            <p className={`font-bold ${strategy.totalProfit > 0 ? "text-green-600" : "text-red-600"}`}>${strategy.totalProfit.toFixed(2)}</p>
+            <p className={`font-bold ${strategy.totalProfit > 0 ? "text-profit" : "text-loss"}`}>${strategy.totalProfit.toFixed(2)}</p>
             <p className="text-xs text-muted-foreground">Total Profit</p>
           </div>
         </div>
@@ -191,7 +191,7 @@ function StrategyCard({ strategy }: { strategy: StrategyStatistics }) {
           </div>
           <div className="h-2 w-full rounded-full bg-muted">
             <div
-              className={`h-2 rounded-full ${strategy.edgeConfidence > 80 ? "bg-green-600" : strategy.edgeConfidence > 50 ? "bg-yellow-600" : "bg-red-600"}`}
+              className={`h-2 rounded-full ${strategy.edgeConfidence > 80 ? "bg-profit" : strategy.edgeConfidence > 50 ? "bg-chart-4" : "bg-loss"}`}
               style={{ width: `${strategy.edgeConfidence}%` }}
             />
           </div>
@@ -225,8 +225,8 @@ function StrategyCard({ strategy }: { strategy: StrategyStatistics }) {
             </p>
           </div>
         </div>
-        <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/20">
-          <AlertDescription className="text-blue-900 dark:text-blue-200">
+        <Alert className="border-border bg-muted/50 text-foreground">
+          <AlertDescription>
             <strong>Action:</strong> {strategy.rationale}
           </AlertDescription>
         </Alert>
@@ -811,13 +811,13 @@ export default function StrategyEdgePage() {
       {bestStrategy || worstStrategy ? (
         <div className="grid gap-6 md:grid-cols-2">
           {bestStrategy && (
-            <Card className="border-green-200 bg-green-50 dark:border-green-900/40 dark:bg-green-950/20">
+            <Card className="border-profit/25 bg-profit/8">
               <CardHeader>
-                <CardTitle className="text-green-900 dark:text-green-200">Best Strategy</CardTitle>
+                <CardTitle className="text-foreground">Best Strategy</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                <p className="text-lg font-bold text-green-700 dark:text-green-300">{bestStrategy.strategy || "Unspecified"}</p>
-                <p>Edge: <span className="font-semibold text-green-600">${bestStrategy.edge.toFixed(2)}/trade</span></p>
+                <p className="text-lg font-bold text-profit">{bestStrategy.strategy || "Unspecified"}</p>
+                <p>Edge: <span className="font-semibold text-profit">${bestStrategy.edge.toFixed(2)}/trade</span></p>
                 <p>Expectancy: <span className="font-semibold">${bestStrategy.expectancy.toFixed(2)}</span></p>
                 <p>Profit Factor: <span className="font-semibold">{formatRatio(bestStrategy.profitFactor)}</span></p>
                 <p>Recommendation: <Badge className={getRecommendationColor(bestStrategy.recommendation)}>{bestStrategy.recommendation}</Badge></p>
@@ -825,14 +825,14 @@ export default function StrategyEdgePage() {
             </Card>
           )}
           {worstStrategy && worstStrategy.expectancy < 0 && (
-            <Card className="border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-950/20">
+            <Card className="border-loss/25 bg-loss/8">
               <CardHeader>
-                <CardTitle className="text-red-900 dark:text-red-200">Losing Strategy</CardTitle>
+                <CardTitle className="text-foreground">Losing Strategy</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
-                <p className="text-lg font-bold text-red-700 dark:text-red-300">{worstStrategy.strategy || "Unspecified"}</p>
-                <p>Edge: <span className="font-semibold text-red-600">${worstStrategy.edge.toFixed(2)}/trade</span></p>
-                <p>Expectancy: <span className="font-semibold text-red-600">${worstStrategy.expectancy.toFixed(2)}</span></p>
+                <p className="text-lg font-bold text-loss">{worstStrategy.strategy || "Unspecified"}</p>
+                <p>Edge: <span className="font-semibold text-loss">${worstStrategy.edge.toFixed(2)}/trade</span></p>
+                <p>Expectancy: <span className="font-semibold text-loss">${worstStrategy.expectancy.toFixed(2)}</span></p>
                 <p>Profit Factor: <span className="font-semibold">{formatRatio(worstStrategy.profitFactor)}</span></p>
                 <p>Recommendation: <Badge className={getRecommendationColor(worstStrategy.recommendation)}>{worstStrategy.recommendation}</Badge></p>
               </CardContent>

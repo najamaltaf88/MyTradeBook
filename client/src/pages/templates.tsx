@@ -103,10 +103,10 @@ export function TemplatesPage() {
   };
 
   const categoryColors: Record<string, string> = {
-    scalp: "bg-red-100 text-red-800",
-    intraday: "bg-blue-100 text-blue-800",
-    swing: "bg-green-100 text-green-800",
-    custom: "bg-gray-100 text-gray-800",
+    scalp: "border-loss/30 bg-loss/10 text-loss",
+    intraday: "border-chart-2/30 bg-chart-2/10 text-chart-2",
+    swing: "border-profit/30 bg-profit/10 text-profit",
+    custom: "border-border bg-muted text-muted-foreground",
   };
 
   const TemplateCard = ({ template, isPublic = false }: { template: Template | PublicTemplate; isPublic?: boolean }) => {
@@ -129,10 +129,10 @@ export function TemplatesPage() {
             </div>
             {isPublic && "averageWinRate" in template && (
               <div className="text-right">
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-profit">
                   {(template.averageWinRate * 100).toFixed(0)}%
                 </div>
-                <div className="text-xs text-gray-600">win rate</div>
+                <div className="text-xs text-muted-foreground">win rate</div>
               </div>
             )}
           </div>
@@ -140,14 +140,14 @@ export function TemplatesPage() {
         <CardContent className="space-y-3">
           {template.reason && (
             <div>
-              <label className="text-xs font-semibold text-gray-600">Entry Reason</label>
+              <label className="text-xs font-semibold text-muted-foreground">Entry Reason</label>
               <p className="text-sm">{template.reason}</p>
             </div>
           )}
 
           {template.logic && (
             <div>
-              <label className="text-xs font-semibold text-gray-600">Trade Logic</label>
+              <label className="text-xs font-semibold text-muted-foreground">Trade Logic</label>
               <p className="text-sm">{template.logic}</p>
             </div>
           )}
@@ -155,22 +155,22 @@ export function TemplatesPage() {
           {riskReward && (
             <div className="flex gap-4">
               <div>
-                <label className="text-xs font-semibold text-gray-600">Risk</label>
+                <label className="text-xs font-semibold text-muted-foreground">Risk</label>
                 <p className="text-sm font-mono">{template.typicalRiskPips} pips</p>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-600">Reward</label>
+                <label className="text-xs font-semibold text-muted-foreground">Reward</label>
                 <p className="text-sm font-mono">{template.typicalRewardPips} pips</p>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-600">Ratio</label>
+                <label className="text-xs font-semibold text-muted-foreground">Ratio</label>
                 <p className="text-sm font-mono">{riskReward}</p>
               </div>
             </div>
           )}
 
           <div className="flex items-center justify-between pt-2 border-t">
-            <span className="text-xs text-gray-600 flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
               <TrendingUp size={14} />
               {template.usageCount} uses
             </span>
@@ -205,7 +205,7 @@ export function TemplatesPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Trade Templates</h1>
-          <p className="text-gray-600">Speed up logging, improve consistency</p>
+          <p className="text-muted-foreground">Speed up logging, improve consistency</p>
         </div>
         <Button size="lg" className="gap-2">
           <Plus size={18} /> New Template
@@ -221,9 +221,9 @@ export function TemplatesPage() {
         <TabsContent value="my-templates" className="space-y-4">
           {templates.length === 0 && !loading ? (
             <Card className="text-center py-12">
-              <Plus size={48} className="mx-auto text-gray-400 mb-4" />
+              <Plus size={48} className="mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold">No Templates Yet</h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-muted-foreground mb-4">
                 Create templates for your common setups to speed up trade logging
               </p>
               <Button className="gap-2">
@@ -240,8 +240,8 @@ export function TemplatesPage() {
         </TabsContent>
 
         <TabsContent value="community" className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <p className="text-sm text-blue-900">
+          <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm text-foreground">
               Discover proven templates shared by professional traders in the community
             </p>
           </div>

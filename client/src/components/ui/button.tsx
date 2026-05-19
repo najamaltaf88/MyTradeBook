@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-200 hover:-translate-y-px active:translate-y-0 active:scale-[0.99]",
   {
     variants: {
       variant: {
@@ -17,6 +17,7 @@ const buttonVariants = cva(
           "border border-border bg-card text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground",
         secondary: "border border-border bg-secondary text-secondary-foreground shadow-sm hover:bg-accent hover:text-accent-foreground",
         ghost: "border border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        link: "border border-transparent bg-transparent px-0 text-primary shadow-none underline-offset-4 hover:translate-y-0 hover:underline active:scale-100",
         success: "border border-emerald-400/25 bg-[image:var(--gradient-success)] text-white shadow-[0_16px_40px_rgba(16,185,129,0.26)]",
         glass: "border border-border bg-card text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground",
       },

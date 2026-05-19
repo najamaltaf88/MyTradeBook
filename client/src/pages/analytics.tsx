@@ -354,8 +354,8 @@ function HourlyHeatmap({ data }: { data: Stats["hourlyStats"] }) {
             className={cn(
               "rounded p-1.5 text-center cursor-default transition-colors",
               count === 0 && "bg-muted/30",
-              count > 0 && profit >= 0 && "bg-emerald-500/10 hover:bg-emerald-500/20",
-              count > 0 && profit < 0 && "bg-red-500/10 hover:bg-red-500/20"
+              count > 0 && profit >= 0 && "bg-profit/10 hover:bg-profit/20",
+              count > 0 && profit < 0 && "bg-loss/10 hover:bg-loss/20"
             )}
             style={{ opacity: count === 0 ? 0.4 : 0.3 + intensity * 0.7 }}
             title={`${h}:00 ${tzAbbr} | ${count} trades | $${profit.toFixed(2)} | ${winRate}% WR`}
@@ -375,10 +375,10 @@ function HourlyHeatmap({ data }: { data: Stats["hourlyStats"] }) {
 
 function SessionCard({ session, profit, trades, winRate }: { session: string; profit: number; trades: number; winRate: number }) {
   const sessionColors: Record<string, string> = {
-    Asian: "border-amber-500/20 bg-amber-500/5",
-    London: "border-blue-500/20 bg-blue-500/5",
-    "London/NY Overlap": "border-cyan-500/20 bg-cyan-500/5",
-    "New York": "border-purple-500/20 bg-purple-500/5",
+    Asian: "border-chart-4/20 bg-chart-4/5",
+    London: "border-primary/20 bg-primary/5",
+    "London/NY Overlap": "border-chart-2/20 bg-chart-2/5",
+    "New York": "border-chart-3/20 bg-chart-3/5",
     "Off-hours": "border-muted bg-muted/30",
   };
 
@@ -494,19 +494,19 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-3 text-center">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Win</p>
-            <p className="text-lg font-bold font-mono text-emerald-500 mt-0.5">{formatCurrency(s.avgWin)}</p>
+            <p className="text-lg font-bold font-mono text-profit mt-0.5">{formatCurrency(s.avgWin)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 text-center">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Loss</p>
-            <p className="text-lg font-bold font-mono text-red-500 mt-0.5">{formatCurrency(s.avgLoss)}</p>
+            <p className="text-lg font-bold font-mono text-loss mt-0.5">{formatCurrency(s.avgLoss)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 text-center">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Profit Factor</p>
-            <p className={cn("text-lg font-bold font-mono mt-0.5", s.profitFactor >= 1 ? "text-emerald-500" : "text-red-500")}>
+            <p className={cn("text-lg font-bold font-mono mt-0.5", s.profitFactor >= 1 ? "text-profit" : "text-loss")}>
               {isPerfectProfitFactor(s.profitFactor) ? "INF" : s.profitFactor}
             </p>
           </CardContent>
@@ -514,7 +514,7 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-3 text-center">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Win Rate</p>
-            <p className={cn("text-lg font-bold font-mono mt-0.5", s.winRate >= 50 ? "text-emerald-500" : "text-red-500")}>
+            <p className={cn("text-lg font-bold font-mono mt-0.5", s.winRate >= 50 ? "text-profit" : "text-loss")}>
               {s.winRate}%
             </p>
           </CardContent>
@@ -525,10 +525,10 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <Flame className="w-3.5 h-3.5 text-emerald-500" />
+              <Flame className="w-3.5 h-3.5 text-profit" />
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Win Streak</p>
             </div>
-            <p className="text-lg font-bold font-mono text-emerald-500">{s.maxWinStreak}</p>
+            <p className="text-lg font-bold font-mono text-profit">{s.maxWinStreak}</p>
             {s.currentWinStreak > 0 && (
               <p className="text-[10px] text-muted-foreground">Current: {s.currentWinStreak}</p>
             )}
@@ -537,10 +537,10 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <Snowflake className="w-3.5 h-3.5 text-red-500" />
+              <Snowflake className="w-3.5 h-3.5 text-loss" />
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Loss Streak</p>
             </div>
-            <p className="text-lg font-bold font-mono text-red-500">{s.maxLossStreak}</p>
+            <p className="text-lg font-bold font-mono text-loss">{s.maxLossStreak}</p>
             {s.currentLossStreak > 0 && (
               <p className="text-[10px] text-muted-foreground">Current: {s.currentLossStreak}</p>
             )}
@@ -549,10 +549,10 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <ArrowDown className="w-3.5 h-3.5 text-red-500" />
+              <ArrowDown className="w-3.5 h-3.5 text-loss" />
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Max Drawdown</p>
             </div>
-            <p className="text-lg font-bold font-mono text-red-500">{formatCurrency(s.maxDrawdown)}</p>
+            <p className="text-lg font-bold font-mono text-loss">{formatCurrency(s.maxDrawdown)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -572,7 +572,7 @@ export default function AnalyticsPage() {
             <Target className="w-5 h-5 text-muted-foreground" />
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Average Risk:Reward Ratio</p>
-              <p className={cn("text-lg font-bold font-mono", s.avgRR >= 1 ? "text-emerald-500" : "text-amber-500")}>
+              <p className={cn("text-lg font-bold font-mono", s.avgRR >= 1 ? "text-profit" : "text-chart-4")}>
                 1 : {s.avgRR}
               </p>
             </div>
@@ -589,10 +589,10 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3 space-y-1">
+              <div className="space-y-1 rounded-lg border border-profit/15 bg-profit/5 p-3">
                 <div className="flex items-center gap-1.5">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                  <p className="text-xs font-medium text-emerald-600">Long (Buy)</p>
+                  <TrendingUp className="w-3.5 h-3.5 text-profit" />
+                  <p className="text-xs font-medium text-profit">Long (Buy)</p>
                 </div>
                 <p className={cn("text-lg font-bold font-mono", getProfitColor(s.longProfit))}>
                   {s.longProfit >= 0 ? "+" : ""}{formatCurrency(s.longProfit)}
@@ -602,10 +602,10 @@ export default function AnalyticsPage() {
                   <span>{s.longWinRate}% WR</span>
                 </div>
               </div>
-              <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 space-y-1">
+              <div className="space-y-1 rounded-lg border border-loss/15 bg-loss/5 p-3">
                 <div className="flex items-center gap-1.5">
-                  <TrendingDown className="w-3.5 h-3.5 text-red-500" />
-                  <p className="text-xs font-medium text-red-600">Short (Sell)</p>
+                  <TrendingDown className="w-3.5 h-3.5 text-loss" />
+                  <p className="text-xs font-medium text-loss">Short (Sell)</p>
                 </div>
                 <p className={cn("text-lg font-bold font-mono", getProfitColor(s.shortProfit))}>
                   {s.shortProfit >= 0 ? "+" : ""}{formatCurrency(s.shortProfit)}
@@ -693,7 +693,7 @@ export default function AnalyticsPage() {
                       </td>
                       <td className="p-2 text-right text-sm">{m.trades}</td>
                       <td className="p-2 text-right text-sm">
-                        <span className={cn("font-mono", m.winRate >= 50 ? "text-emerald-500" : "text-red-500")}>
+                        <span className={cn("font-mono", m.winRate >= 50 ? "text-profit" : "text-loss")}>
                           {m.winRate}%
                         </span>
                       </td>
@@ -759,7 +759,7 @@ export default function AnalyticsPage() {
                       <td className="p-3 font-mono text-sm font-medium">{sym.symbol}</td>
                       <td className="p-3 text-right text-sm">{sym.count}</td>
                       <td className="p-3 text-right text-sm">
-                        <span className={cn("font-mono", sym.winRate >= 50 ? "text-emerald-500" : "text-red-500")}>
+                        <span className={cn("font-mono", sym.winRate >= 50 ? "text-profit" : "text-loss")}>
                           {sym.winRate}%
                         </span>
                       </td>

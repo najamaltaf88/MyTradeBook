@@ -359,7 +359,7 @@ export default function AlertsPage() {
             <CardTitle className="text-sm">Active Alerts</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{activeCount}</div>
+            <div className="text-2xl font-bold text-profit">{activeCount}</div>
             <p className="text-xs text-muted-foreground mt-1">Currently enabled</p>
           </CardContent>
         </Card>
@@ -709,11 +709,11 @@ export default function AlertsPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <div className="flex items-start gap-2">
-            <CheckCircle className="mt-0.5 h-4 w-4 text-emerald-500" />
+            <CheckCircle className="mt-0.5 h-4 w-4 text-profit" />
             Alerts now support real create, edit, delete, enable/disable, test-send, and history tracking.
           </div>
           <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-500" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 text-chart-4" />
             Slack, Discord, webhook, and email delivery only work if you provide valid endpoints or addresses. Push notifications remain local-only.
           </div>
         </CardContent>

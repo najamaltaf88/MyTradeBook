@@ -81,42 +81,42 @@ type ImpactConfig = { priority: number; dotClass: string; badgeClass: string; ro
 const IMPACT_CONFIG: Record<string, ImpactConfig> = {
   High: {
     priority: 3,
-    dotClass: "bg-red-500",
-    badgeClass: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-    rowClass: "bg-red-500/[0.04] dark:bg-red-500/[0.08]",
+    dotClass: "bg-loss",
+    badgeClass: "border-loss/30 bg-loss/10 text-loss",
+    rowClass: "bg-loss/[0.06]",
   },
   Medium: {
     priority: 2,
-    dotClass: "bg-amber-500",
-    badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    rowClass: "bg-amber-500/[0.03] dark:bg-amber-500/[0.07]",
+    dotClass: "bg-chart-4",
+    badgeClass: "border-chart-4/30 bg-chart-4/10 text-chart-4",
+    rowClass: "bg-chart-4/[0.06]",
   },
   Low: {
     priority: 1,
-    dotClass: "bg-yellow-500",
-    badgeClass: "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+    dotClass: "bg-chart-3",
+    badgeClass: "border-chart-3/30 bg-chart-3/10 text-chart-3",
     rowClass: "",
   },
   Holiday: {
     priority: 0,
-    dotClass: "bg-slate-400",
-    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300",
-    rowClass: "bg-slate-500/[0.03] dark:bg-slate-500/[0.06]",
+    dotClass: "bg-muted-foreground/50",
+    badgeClass: "border-border bg-muted text-muted-foreground",
+    rowClass: "bg-muted/25",
   },
 };
 
 const SESSIONS = [
-  { name: "Sydney", color: "bg-sky-500", textColor: "text-sky-600 dark:text-sky-300", startUtc: 22, endUtc: 7 },
-  { name: "Tokyo", color: "bg-violet-500", textColor: "text-violet-600 dark:text-violet-300", startUtc: 0, endUtc: 9 },
-  { name: "London", color: "bg-emerald-500", textColor: "text-emerald-600 dark:text-emerald-300", startUtc: 8, endUtc: 17 },
-  { name: "New York", color: "bg-amber-500", textColor: "text-amber-600 dark:text-amber-300", startUtc: 13, endUtc: 22 },
+  { name: "Sydney", color: "bg-chart-2", textColor: "text-chart-2", startUtc: 22, endUtc: 7 },
+  { name: "Tokyo", color: "bg-chart-3", textColor: "text-chart-3", startUtc: 0, endUtc: 9 },
+  { name: "London", color: "bg-profit", textColor: "text-profit", startUtc: 8, endUtc: 17 },
+  { name: "New York", color: "bg-chart-4", textColor: "text-chart-4", startUtc: 13, endUtc: 22 },
 ];
 
 function getImpactConfig(impact: string): ImpactConfig {
   return IMPACT_CONFIG[impact] ?? IMPACT_CONFIG.Low ?? {
     priority: 1,
-    dotClass: "bg-yellow-500",
-    badgeClass: "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+    dotClass: "bg-chart-3",
+    badgeClass: "border-chart-3/30 bg-chart-3/10 text-chart-3",
     rowClass: "",
   };
 }
@@ -183,16 +183,16 @@ function isSessionActive(startUtc: number, endUtc: number, nowUtcHour: number) {
 }
 
 function getBiasClasses(bias: BiasDirection) {
-  if (bias === "bullish") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
-  if (bias === "bearish") return "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300";
-  if (bias === "neutral") return "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300";
+  if (bias === "bullish") return "border-profit/25 bg-profit/10 text-profit";
+  if (bias === "bearish") return "border-loss/25 bg-loss/10 text-loss";
+  if (bias === "neutral") return "border-border bg-muted/60 text-muted-foreground";
   return "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300";
 }
 
 function getVolatilityClasses(level: VolatilityLevel) {
-  if (level === "high") return "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300";
-  if (level === "medium") return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-  return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (level === "high") return "border-loss/25 bg-loss/10 text-loss";
+  if (level === "medium") return "border-chart-4/25 bg-chart-4/10 text-chart-4";
+  return "border-profit/25 bg-profit/10 text-profit";
 }
 
 function getEventStatus(eventDate: string) {
@@ -204,12 +204,12 @@ function getEventStatus(eventDate: string) {
     return { label: "Past", className: "text-muted-foreground" };
   }
   if (deltaMinutes <= 15) {
-    return { label: "Due", className: "text-red-600 dark:text-red-300" };
+    return { label: "Due", className: "text-loss" };
   }
   if (deltaMinutes <= 90) {
-    return { label: "Soon", className: "text-amber-600 dark:text-amber-300" };
+    return { label: "Soon", className: "text-chart-4" };
   }
-  return { label: "Upcoming", className: "text-emerald-600 dark:text-emerald-300" };
+  return { label: "Upcoming", className: "text-profit" };
 }
 
 function ImpactDots({ impact }: { impact: string }) {
@@ -511,7 +511,7 @@ function AiBriefPanel({
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Risk Notes</div>
             <ul className="space-y-2">
               {brief.riskNotes.map((note) => (
-                <li key={note} className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 leading-5 text-amber-900 dark:text-amber-100">
+                <li key={note} className="rounded-2xl border border-chart-4/25 bg-chart-4/10 p-3 leading-5 text-foreground">
                   {note}
                 </li>
               ))}
@@ -607,7 +607,7 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6" data-testid="page-calendar">
-      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.10),_transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.88))] p-6 shadow-sm dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.16),_transparent_32%),linear-gradient(180deg,rgba(9,14,24,0.96),rgba(6,10,18,0.92))]">
+      <div className="overflow-hidden rounded-[28px] border border-border/70 bg-gradient-to-b from-card via-background to-muted/30 p-6 shadow-sm">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <Badge variant="outline" className="border-border/70 bg-background/70">
@@ -697,7 +697,7 @@ export default function CalendarPage() {
                       Times shown in {timezone}
                     </span>
                     {highImpactCount > 0 ? (
-                      <span className="font-medium text-red-600 dark:text-red-300">
+                      <span className="font-medium text-loss">
                         {highImpactCount} high-impact event{highImpactCount > 1 ? "s" : ""}
                       </span>
                     ) : null}
@@ -874,12 +874,12 @@ export default function CalendarPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {item.high > 0 ? (
-                        <Badge className="border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300">
+                        <Badge className="border-loss/25 bg-loss/10 text-loss">
                           {item.high} high
                         </Badge>
                       ) : null}
                       {item.medium > 0 ? (
-                        <Badge className="border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                        <Badge className="border-chart-4/25 bg-chart-4/10 text-chart-4">
                           {item.medium} med
                         </Badge>
                       ) : null}

@@ -318,7 +318,7 @@ export default function LoginPage({
             <div className="grid gap-3">
               {WORKSPACE_BENEFITS.map((item) => (
                 <div key={item} className="flex items-start gap-3 rounded-2xl border border-border bg-background px-4 py-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-profit" />
                   <span className="text-sm text-foreground">{item}</span>
                 </div>
               ))}
@@ -399,7 +399,7 @@ export default function LoginPage({
                             isActive
                               ? "border-primary/35 bg-primary/10"
                               : isDone
-                              ? "border-emerald-500/25 bg-emerald-500/8"
+                              ? "border-profit/25 bg-profit/8"
                               : "border-border bg-card",
                           )}
                         >
@@ -409,7 +409,7 @@ export default function LoginPage({
                               isActive
                                 ? "border-primary/40 bg-primary text-primary-foreground"
                                 : isDone
-                                ? "border-emerald-500/30 bg-emerald-500 text-white"
+                                ? "border-profit/30 bg-profit text-primary-foreground"
                                 : "border-border/70 bg-background text-muted-foreground",
                             )}
                           >
@@ -512,7 +512,7 @@ export default function LoginPage({
                   <div className="mt-3 space-y-2">
                     {PASSWORD_HINTS.map((hint) => (
                       <div key={hint} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <CheckCircle2 className={cn("mt-0.5 h-4 w-4", password.length >= 8 ? "text-emerald-500" : "text-muted-foreground")} />
+                        <CheckCircle2 className={cn("mt-0.5 h-4 w-4", password.length >= 8 ? "text-profit" : "text-muted-foreground")} />
                         <span>{hint}</span>
                       </div>
                     ))}
@@ -520,8 +520,8 @@ export default function LoginPage({
                 </div>
               )}
 
-              {error ? <p className="text-sm text-red-500">{error}</p> : null}
-              {message ? <p className="text-sm text-emerald-600 dark:text-emerald-400">{message}</p> : null}
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {message ? <p className="text-sm text-profit">{message}</p> : null}
               {preparingRecovery ? <p className="text-sm text-primary">Verifying recovery request...</p> : null}
 
               <Button

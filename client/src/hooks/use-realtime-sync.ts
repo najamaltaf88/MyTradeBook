@@ -1,22 +1,21 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { queuePostTradeReview } from "@/hooks/use-post-trade-review";
 
-const INVALIDATION_KEYS = [
-  ["/api/accounts"],
+const INVALIDATION_BY_REASON: Record<string, readonly (readonly string[])[]> = {
+  trade_opened: [["/api/trades"], ["/api/stats"], ["/api/accounts"]],
+  trade_updated: [["/api/trades"], ["/api/stats"]],
+  trade_closed: [["/api/trades"], ["/api/stats"], ["/api/accounts"]],
+  trade_reviewed: [["/api/trades"]],
+  account_info_updated: [["/api/accounts"], ["/api/stats"]],
+  account_heartbeat: [["/api/accounts"]],
+};
+
+const DEFAULT_INVALIDATION: readonly (readonly string[])[] = [
   ["/api/trades"],
   ["/api/stats"],
-  ["/api/playbook"],
-  ["/api/goals"],
-  ["/api/reports"],
-  ["/api/ai/trades"],
-  ["/api/ai/portfolio"],
-  ["/api/dashboard/reflection"],
-  ["/api/dashboard/reflection/suggestions"],
-  ["/api/strategy-edge/concepts"],
-  ["strategyEdge"],
-  ["/api/alerts"],
-  ["/api/alerts/history"],
+  ["/api/accounts"],
 ];
 
 export function useRealtimeSync(enabled: boolean) {
@@ -32,23 +31,40 @@ export function useRealtimeSync(enabled: boolean) {
     let disposed = false;
     let pageVisible = typeof document === "undefined" ? true : document.visibilityState === "visible";
 
-    const triggerRefresh = () => {
+    const triggerRefresh = (reason?: string, tradeId?: string) => {
+      if (reason === "trade_closed" && tradeId) {
+        queuePostTradeReview(tradeId);
+      }
+
       if (debounceTimer !== null) {
         window.clearTimeout(debounceTimer);
       }
 
       debounceTimer = window.setTimeout(() => {
+        const keys = reason && INVALIDATION_BY_REASON[reason]
+          ? INVALIDATION_BY_REASON[reason]
+          : DEFAULT_INVALIDATION;
         void Promise.all(
-          INVALIDATION_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+          keys.map((queryKey) => queryClient.invalidateQueries({ queryKey: [...queryKey] })),
         );
-      }, 150);
+      }, 120);
     };
 
     const cleanupSource = () => {
       if (!eventSource) return;
-      eventSource.removeEventListener("update", triggerRefresh);
+      eventSource.removeEventListener("update", onUpdate);
       eventSource.close();
       eventSource = null;
+    };
+
+    const onUpdate = (event: Event) => {
+      try {
+        const message = event as MessageEvent<string>;
+        const data = JSON.parse(message.data) as { reason?: string; tradeId?: string };
+        triggerRefresh(data.reason, data.tradeId);
+      } catch {
+        triggerRefresh();
+      }
     };
 
     const scheduleReconnect = () => {
@@ -70,7 +86,7 @@ export function useRealtimeSync(enabled: boolean) {
       const token = data.session?.access_token;
       const url = token ? `/api/realtime/stream?access_token=${encodeURIComponent(token)}` : "/api/realtime/stream";
       eventSource = new EventSource(url, { withCredentials: true });
-      eventSource.addEventListener("update", triggerRefresh);
+      eventSource.addEventListener("update", onUpdate);
       eventSource.onopen = () => {
         reconnectAttempts = 0;
       };

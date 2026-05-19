@@ -240,18 +240,19 @@ function toStoredTrade(trade: Trade): Trade {
 }
 
 function toPublicTrade(trade: Trade): Trade {
-  const hasClosedPrices =
-    Boolean(trade.isClosed) &&
-    typeof trade.openPrice === "number" &&
-    Number.isFinite(trade.openPrice) &&
-    typeof trade.closePrice === "number" &&
-    Number.isFinite(trade.closePrice);
+  const hasOpenPrice = typeof trade.openPrice === "number" && Number.isFinite(trade.openPrice);
+  const exitPrice = trade.isClosed
+    ? trade.closePrice
+  : trade.markPrice ?? trade.closePrice;
+  const hasExitPrice = typeof exitPrice === "number" && Number.isFinite(exitPrice);
 
   return {
     ...trade,
-    pips: hasClosedPrices
-      ? calculateTradePips(trade.symbol, trade.type, trade.openPrice, trade.closePrice as number)
-      : trade.pips ?? null,
+    reviewPending: Boolean(trade.reviewPending),
+    pips:
+      hasOpenPrice && hasExitPrice
+        ? calculateTradePips(trade.symbol, trade.type, trade.openPrice, exitPrice as number)
+        : trade.pips ?? null,
     screenshotUrl: buildScreenshotUrl(trade.screenshotUrl),
   };
 }
