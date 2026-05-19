@@ -107,6 +107,7 @@ type CoachingAnalysisResult = {
   generatedAt: string;
   source: "grok" | "gemini" | "algorithmic";
   modelUsed: string;
+  model_used?: string;
   fallbackUsed: boolean;
   fromCache: boolean;
   mentorSummary?: string;
@@ -128,6 +129,7 @@ function buildProviderFallback(provider: ProviderKey, error?: unknown): Coaching
     generatedAt: new Date().toISOString(),
     source: "algorithmic",
     modelUsed: "algorithmic-v1",
+    model_used: "algorithmic-v1",
     fallbackUsed: true,
     fromCache: false,
     mentorSummary: `${providerLabel} is currently unavailable, so the app is showing internal coach guidance instead.`,

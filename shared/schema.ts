@@ -29,6 +29,8 @@ export const trades = z.object({
   id: z.string(),
   accountId: z.string(),
   ticket: z.string(),
+  external_id: z.string().nullable().optional(),
+  sync_source: z.enum(["ea", "python", "manual"]).optional(),
   symbol: z.string().max(24),
   type: z.enum(["BUY", "SELL"]),
   openTime: dateLikeSchema,

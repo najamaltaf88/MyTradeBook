@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ import {
   Eye,
   EyeOff,
   Info,
+  ChevronDown,
 } from "lucide-react";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useTimezone } from "@/hooks/use-timezone";
@@ -56,6 +58,100 @@ import { useToast } from "@/hooks/use-toast";
 import { connectAccountSchema } from "@shared/schema";
 import type { Mt5Account } from "@shared/schema";
 import { z } from "zod";
+
+function buildPythonSyncExampleConfig() {
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:5000";
+  return `{
+  "server_url": "${origin}",
+  "days_back": 30,
+  "date_from": "2026-05-01",
+  "date_to": "2026-05-19",
+  "accounts": [
+    {
+      "login": 12345678,
+      "password": "your-mt5-password",
+      "server": "Broker-Server",
+      "account_id": "mytradebook-account-id",
+      "api_key": "mtb_your_account_api_key"
+    }
+  ]
+}
+`;
+}
+
+function PythonSyncSection() {
+  const [open, setOpen] = useState(false);
+
+  const downloadExampleConfig = () => {
+    const pythonSyncExampleConfig = buildPythonSyncExampleConfig();
+    const blob = new Blob([pythonSyncExampleConfig], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "mt5_accounts.example.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Card>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-4 p-5 text-left"
+            data-testid="button-python-sync-toggle"
+          >
+            <div>
+              <h2 className="text-base font-semibold">MT5 Python Sync (EA-Free)</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Recommended for prop firm traders where EAs are restricted
+              </p>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="border-t pt-5">
+            <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
+              <div className="space-y-4">
+                <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                  <li>Install Python 64-bit</li>
+                  <li>
+                    Run <code className="rounded bg-muted px-1 py-0.5">pip install MetaTrader5 pandas requests</code>
+                  </li>
+                  <li>Download <code>mt5_accounts.example.json</code></li>
+                  <li>Fill in your account details and API keys</li>
+                  <li>
+                    Run <code className="rounded bg-muted px-1 py-0.5">python script/mt5_sync.py</code>
+                  </li>
+                </ol>
+                <div className="rounded-md border border-chart-4/25 bg-chart-4/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-chart-4" />
+                    <p className="text-xs leading-relaxed">
+                      MT5 terminal must be open and logged in when running the script.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={downloadExampleConfig}
+                data-testid="button-download-python-config"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download Config
+              </Button>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
 
 function ConnectAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
@@ -535,6 +631,8 @@ export default function AccountsPage() {
           Add Account
         </Button>
       </div>
+
+      <PythonSyncSection />
 
       {(accounts || []).length === 0 ? (
         <Card>

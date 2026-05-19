@@ -1,0 +1,22 @@
+{
+  "server_url": "http://localhost:5000",
+  "days_back": 30,
+  "date_from": "2026-05-01",
+  "date_to": "2026-05-19",
+  "accounts": [
+    {
+      "login": 12345678,
+      "password": "your-mt5-password",
+      "server": "Broker-Server",
+      "account_id": "mytradebook-account-id",
+      "api_key": "mtb_your_account_api_key"
+    },
+    {
+      "login": 87654321,
+      "password": "another-mt5-password",
+      "server": "PropFirm-Server",
+      "account_id": "another-mytradebook-account-id",
+      "api_key": "mtb_another_account_api_key"
+    }
+  ]
+}

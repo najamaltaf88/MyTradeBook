@@ -1312,6 +1312,7 @@ export async function registerRoutes(
           generatedAt: new Date().toISOString(),
           source: "algorithmic",
           modelUsed: "algorithmic-v1",
+          model_used: "algorithmic-v1",
           fallbackUsed: true,
           fromCache: false,
           insights: [

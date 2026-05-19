@@ -5,6 +5,7 @@ import { initStorage } from "./storage";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { Logger } from "./logging";
+import { mt5SyncRouter } from "./routes/mt5-sync";
 
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +97,8 @@ app.use((req, res, next) => {
 
   next();
 });
+
+app.use("/api/mt5-sync", mt5SyncRouter);
 
 (async () => {
   validateEnv();

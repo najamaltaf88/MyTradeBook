@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import { createHash } from "crypto";
 import { z } from "zod";
 import type { Trade } from "@shared/schema";
@@ -12,6 +10,7 @@ import {
 } from "./ai-analyzer";
 import type { IStorage } from "./storage";
 import { Logger } from "./logging";
+import { callOpenRouter } from "./services/openrouter-client";
 
 type InsightType =
   | "trading_discipline"
@@ -28,6 +27,7 @@ export interface CoachingAnalysisResult {
   generatedAt: string;
   source: "grok" | "gemini" | "algorithmic";
   modelUsed: string;
+  model_used: string;
   fallbackUsed: boolean;
   fromCache: boolean;
   mentorSummary: string;
@@ -124,12 +124,6 @@ type Dataset = {
 };
 
 const MODEL_FALLBACK = "algorithmic-v1";
-const GROK_ENDPOINT = process.env.GROK_API_URL || "https://api.x.ai/v1/chat/completions";
-const GROK_MODEL = process.env.GROK_MODEL || "grok-4";
-const GROK_TIMEOUT_MS = 45000;
-const GEMINI_ENDPOINT = process.env.GEMINI_API_URL || "https://generativelanguage.googleapis.com/v1beta/models";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const GEMINI_TIMEOUT_MS = 45000;
 const CACHE_LOOKUP_LIMIT = 40;
 
 const AIJsonSchema = z.object({
@@ -148,6 +142,7 @@ const CachedResultSchema = z.object({
   generatedAt: z.string(),
   source: z.enum(["grok", "gemini", "algorithmic"]),
   modelUsed: z.string().min(1),
+  model_used: z.string().min(1).optional(),
   fallbackUsed: z.boolean(),
   mentorSummary: z.string().min(1),
   priorityFocus: z.string().min(1),
@@ -234,23 +229,6 @@ function dedupe(values: string[]): string[] {
   return out;
 }
 
-function normalizeContent(content: unknown): string {
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
-  const chunks: string[] = [];
-  for (const item of content) {
-    if (typeof item === "string") {
-      chunks.push(item);
-      continue;
-    }
-    if (!isRecord(item)) continue;
-    if (typeof item.text === "string") {
-      chunks.push(item.text);
-    }
-  }
-  return chunks.join("\n").trim();
-}
-
 function formatPromptNumber(value: number | null, digits = 2): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "n/a";
   return round(value, digits).toString();
@@ -260,6 +238,8 @@ function formatPromptFlag(value: boolean | null): string {
   if (value === null) return "none";
   return value ? "✓" : "✗";
 }
+
+void formatPromptFlag;
 
 function formatPromptResult(pnl: number): "WIN" | "LOSS" | "BE" {
   if (pnl > 0) return "WIN";
@@ -292,106 +272,6 @@ function extractJson(content: string): string {
     throw new Error("AI response did not include valid JSON.");
   }
   return content.slice(first, last + 1);
-}
-
-function sanitizeEnvValue(value: string): string {
-  return value.trim().replace(/^['"]|['"]$/g, "");
-}
-
-function findNearestEnvPath(): string | undefined {
-  const explicitCandidates = [
-    process.env.DOTENV_CONFIG_PATH,
-    process.env.MYTRADEBOOK_ENV_PATH,
-    path.join(process.cwd(), ".env"),
-    path.join(path.dirname(process.execPath || ""), ".env"),
-    path.join(((process as NodeJS.Process & { resourcesPath?: string }).resourcesPath) || "", ".env"),
-    path.join(__dirname, "..", ".env"),
-    path.join(__dirname, "..", "..", ".env"),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-
-  for (const envPath of explicitCandidates) {
-    if (fs.existsSync(envPath)) return envPath;
-  }
-
-  let currentDir = process.cwd();
-  while (true) {
-    const envPath = path.join(currentDir, ".env");
-    if (fs.existsSync(envPath)) return envPath;
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) break;
-    currentDir = parentDir;
-  }
-  return undefined;
-}
-
-function resolveGrokApiKey(): string | undefined {
-  const direct = [
-    process.env.GROK_API_KEY,
-    process.env.GROK_APIKEY,
-    process.env.grokAPI_key,
-    process.env.XAI_API_KEY,
-  ]
-    .map((item) => (item ? sanitizeEnvValue(item) : ""))
-    .find((item) => Boolean(item));
-
-  if (direct) {
-    return direct;
-  }
-
-  const envPath = findNearestEnvPath();
-  if (!envPath) {
-    return undefined;
-  }
-
-  const raw = fs.readFileSync(envPath, "utf8");
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    for (const key of ["GROK_API_KEY", "grokAPI_key", "XAI_API_KEY"]) {
-      const regex = new RegExp(`^${key}\\s*[:=]\\s*(.+)$`, "i");
-      const match = trimmed.match(regex);
-      if (!match?.[1]) continue;
-      const value = sanitizeEnvValue(match[1]);
-      if (!value) continue;
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function resolveGeminiApiKey(): string | undefined {
-  const direct = [
-    process.env.GEMINI_API_KEY,
-    process.env.GOOGLE_API_KEY,
-  ]
-    .map((item) => (item ? sanitizeEnvValue(item) : ""))
-    .find((item) => Boolean(item));
-
-  if (direct) {
-    return direct;
-  }
-
-  const envPath = findNearestEnvPath();
-  if (!envPath) {
-    return undefined;
-  }
-
-  const raw = fs.readFileSync(envPath, "utf8");
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    for (const key of ["GEMINI_API_KEY", "GOOGLE_API_KEY"]) {
-      const regex = new RegExp(`^${key}\\s*[:=]\\s*(.+)$`, "i");
-      const match = trimmed.match(regex);
-      if (!match?.[1]) continue;
-      const value = sanitizeEnvValue(match[1]);
-      if (!value) continue;
-      return value;
-    }
-  }
-
-  return undefined;
 }
 
 function sessionTag(trade: Trade): string {
@@ -462,10 +342,6 @@ function tpRespected(trade: Trade, pnl: number): boolean | null {
   return close <= tp * (1 + tol);
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function formatPromptFlagLabel(value: boolean | null): string {
   if (value === null) return "none";
   return value ? "yes" : "no";
@@ -500,11 +376,12 @@ export class AIAnalysisService {
 
     let result: CoachingAnalysisResult;
     try {
-      const ai = await this.getAISuggestions(dataset, provider);
+      const ai = await this.getAISuggestions(dataset);
       result = {
         generatedAt: new Date().toISOString(),
         source: provider,
-        modelUsed: provider === "gemini" ? GEMINI_MODEL : GROK_MODEL,
+        modelUsed: ai.modelUsed,
+        model_used: ai.model_used,
         fallbackUsed: false,
         fromCache: false,
         mentorSummary: ai.mentorSummary,
@@ -516,12 +393,13 @@ export class AIAnalysisService {
       };
     } catch (error) {
       const providerMessage = sanitizeProviderMessage(error);
-      Logger.logAi(`${provider}_provider_failed`, "error", input.userId, providerMessage);
+      Logger.logAi("openrouter_provider_failed", "error", input.userId, providerMessage);
       const fallback = this.getAlgorithmicSuggestions(dataset);
       result = {
         generatedAt: new Date().toISOString(),
         source: "algorithmic",
         modelUsed: MODEL_FALLBACK,
+        model_used: MODEL_FALLBACK,
         fallbackUsed: true,
         fromCache: false,
         mentorSummary: fallback.mentorSummary,
@@ -538,7 +416,9 @@ export class AIAnalysisService {
     return result;
   }
 
-  async getAISuggestions(dataset: Dataset, provider: "grok" | "gemini"): Promise<{
+  async getAISuggestions(dataset: Dataset): Promise<{
+    modelUsed: string;
+    model_used: string;
     mentorSummary: string;
     priorityFocus: string;
     insights: CoachingInsight[];
@@ -546,29 +426,14 @@ export class AIAnalysisService {
     sessionPlan: string[];
     reviewChecklist: string[];
   }> {
-    const apiKey = provider === "gemini" ? resolveGeminiApiKey() : resolveGrokApiKey();
-    if (!apiKey) {
-      throw new Error(`${provider === "gemini" ? "Gemini" : "Grok"} API key not configured.`);
-    }
-
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        return provider === "gemini"
-          ? await this.callGemini(apiKey, dataset)
-          : await this.callGrok(apiKey, dataset);
-      } catch (error) {
-        lastError = error;
-        if (attempt < 2) {
-          await sleep(250);
-          continue;
-        }
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(`${provider === "gemini" ? "Gemini" : "Grok"} API failed.`);
+    const systemPrompt =
+      "You are an elite trading mentor, performance coach, and risk manager. Be direct, evidence-based, and practical. Return only strict JSON.";
+    const response = await callOpenRouter(
+      [{ role: "user", content: this.buildPrompt(dataset) }],
+      systemPrompt,
+      3000,
+    );
+    return this.parseAIResponseContent(response.content, dataset, response.modelUsed);
   }
 
   getAlgorithmicSuggestions(dataset: Dataset): {
@@ -606,6 +471,33 @@ export class AIAnalysisService {
 
     const closed = dataset.trades.filter((trade) => trade.is_closed);
     const last20Closed = closed.slice(-20);
+    const overtradingThreshold = (() => {
+      switch (String(dataset.style || "").toLowerCase()) {
+        case "scalper":
+        case "scalping":
+          return 15;
+        case "day_trader":
+        case "intraday":
+          return 8;
+        case "swing_trader":
+        case "swing":
+          return 3;
+        case "position_trader":
+          return 2;
+        default:
+          return 10;
+      }
+    })();
+    const tradesPerDayForThreshold = new Map<string, number>();
+    for (const trade of dataset.trades) {
+      if (!trade.open_time) continue;
+      const day = trade.open_time.slice(0, 10);
+      if (!day) continue;
+      tradesPerDayForThreshold.set(day, (tradesPerDayForThreshold.get(day) || 0) + 1);
+    }
+    const styleOvertradingDays = Array.from(tradesPerDayForThreshold.values()).filter(
+      (count) => count > overtradingThreshold,
+    ).length;
     const bestStrategy = dataset.strategy_performance.by_strategy
       .filter((item) => item.trades >= 3)
       .sort((a, b) => b.pnl - a.pnl)[0];
@@ -643,7 +535,7 @@ export class AIAnalysisService {
       }
     }
 
-    if (dataset.discipline_scores.max_trades_per_day > 10 || dataset.discipline_scores.overtrading_days > 0) {
+    if (dataset.discipline_scores.max_trades_per_day > overtradingThreshold || styleOvertradingDays > 0) {
       addInsight(
         "trading_discipline",
         `Selectivity broke down on at least one day, with as many as ${dataset.discipline_scores.max_trades_per_day} trades taken.`,
@@ -827,6 +719,224 @@ export class AIAnalysisService {
       addRecommendation(`Keep reinforcing this edge: ${strength}`);
     }
 
+    const isFiniteNumber = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value);
+    const tradeOpenDateOrNull = (trade: NormalizedTrade): Date | null => {
+      if (!trade.open_time) return null;
+      const parsed = new Date(trade.open_time);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const winRateForTrades = (trades: NormalizedTrade[]): number => {
+      if (!trades.length) return 0;
+      const wins = trades.filter((trade) => trade.pnl > 0).length;
+      return (wins / trades.length) * 100;
+    };
+    const weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
+
+    const newsPattern = /\b(news|nfp|cpi|fomc|gdp|pmi|fed)\b/i;
+    const newsTrades = dataset.trades.filter((trade) => newsPattern.test(String(trade.strategy_tag || "")));
+    if (newsTrades.length >= 3) {
+      const avgNewsPnl = average(newsTrades.map((trade) => trade.pnl));
+      if (avgNewsPnl < 0) {
+        addInsight(
+          "trading_discipline",
+          `${newsTrades.length} trades appear to be news-event trades based on comment/strategy tags, and they are net negative (avg PnL: ${avgNewsPnl.toFixed(2)}). High-impact news trades carry spread and slippage risk that systematic setups avoid.`,
+        );
+        addRecommendation("Mark news trades explicitly and track them separately. If the edge is negative, remove news entries from the core strategy.");
+        addReviewCheck("Identify every trade tagged with a news keyword and calculate their standalone P&L separate from your regular setups.");
+      }
+    }
+
+    const hourlyStats = new Map<number, { trades: number; wins: number; losses: number }>();
+    for (const trade of closed) {
+      const openedAt = tradeOpenDateOrNull(trade);
+      if (!openedAt) continue;
+      const hour = openedAt.getUTCHours();
+      const current = hourlyStats.get(hour) || { trades: 0, wins: 0, losses: 0 };
+      current.trades += 1;
+      if (trade.pnl > 0) current.wins += 1;
+      if (trade.pnl < 0) current.losses += 1;
+      hourlyStats.set(hour, current);
+    }
+    const hourlyCandidates = Array.from(hourlyStats.entries())
+      .filter(([, value]) => value.trades >= 3)
+      .map(([hour, value]) => ({
+        hour,
+        ...value,
+        winRate: (value.wins / value.trades) * 100,
+      }));
+    const bestHour = [...hourlyCandidates].sort((a, b) => b.wins - a.wins || b.winRate - a.winRate)[0];
+    if (bestHour && bestHour.winRate > 65) {
+      addInsight(
+        "strategy_performance",
+        `Your highest win rate hour is UTC ${bestHour.hour}h (${bestHour.trades} trades, ${bestHour.winRate.toFixed(1)}% win rate). That time window may align with a structural edge worth protecting.`,
+      );
+      addRecommendation("Prioritize setups during your strongest hour window and track whether that edge holds over the next 20 trades.");
+    }
+    const worstHour = [...hourlyCandidates].sort((a, b) => b.losses - a.losses || a.winRate - b.winRate)[0];
+    if (worstHour && worstHour.winRate < 35) {
+      addInsight(
+        "strategy_performance",
+        `UTC hour ${worstHour.hour}h shows weak results (${worstHour.trades} trades, ${worstHour.winRate.toFixed(1)}% win rate). Trading at this time is currently costing more than it returns.`,
+      );
+      addRecommendation("Avoid or paper-trade during your weakest hour until you understand why that window underperforms.");
+    }
+
+    let currentLossStreak = 0;
+    let maxLossStreak = 0;
+    for (const trade of closed) {
+      if (trade.pnl < 0) {
+        currentLossStreak += 1;
+        maxLossStreak = Math.max(maxLossStreak, currentLossStreak);
+      } else {
+        currentLossStreak = 0;
+      }
+    }
+    if (maxLossStreak >= 5) {
+      addInsight(
+        "psychology",
+        `A streak of ${maxLossStreak} consecutive losses was recorded. Streaks this long usually indicate either a market regime shift or emotional degradation in entry quality - both need a different response than just continuing.`,
+      );
+      addRecommendation("After 4 consecutive losses, stop same-day trading. Do a written review before the next session. No exceptions.");
+      addSessionPlan("Hard rule: 4 losses in a row = session over. Resume only after a written review and one night of rest.");
+    }
+
+    if (closed.length >= 2) {
+      const midpoint = Math.floor(closed.length / 2);
+      const olderHalf = closed.slice(0, midpoint);
+      const recentHalf = closed.slice(midpoint);
+      if (olderHalf.length > 0 && recentHalf.length >= 8) {
+        const olderWinRate = winRateForTrades(olderHalf);
+        const recentWinRate = winRateForTrades(recentHalf);
+        const winRateDelta = recentWinRate - olderWinRate;
+        if (winRateDelta < -15) {
+          addInsight(
+            "strategy_performance",
+            `Win rate has dropped from ${olderWinRate.toFixed(1)}% (older trades) to ${recentWinRate.toFixed(1)}% (recent trades). This declining trend needs attention before it becomes a deeper drawdown.`,
+          );
+          addRecommendation("Go back to demo or reduced size until the win rate stabilizes. Do not add new strategies while the base edge is declining.");
+          addReviewCheck("Compare your last 10 trades against your first 10 in this sample. What changed in entry criteria or market conditions?");
+        } else if (winRateDelta > 15) {
+          addInsight(
+            "strategy_performance",
+            `Win rate has improved from ${olderWinRate.toFixed(1)}% to ${recentWinRate.toFixed(1)}% in recent trades. The edge appears to be strengthening - protect it by staying consistent.`,
+          );
+          addRecommendation("Do not change what is working. Document exactly what you are doing differently in the recent trades.");
+        }
+      }
+    }
+
+    const rrTrades = dataset.trades
+      .map((trade) => trade.rr_ratio)
+      .filter((value): value is number => isFiniteNumber(value));
+    if (rrTrades.length >= 8) {
+      const avgRr = average(rrTrades);
+      const rrStdDev = stdDev(rrTrades);
+      if (rrStdDev > 1.5) {
+        addInsight(
+          "risk_management",
+          `Risk-reward ratio varies widely across trades (avg: ${avgRr.toFixed(2)}, std dev: ${rrStdDev.toFixed(2)}). Inconsistent RR makes the expectancy calculation unreliable.`,
+        );
+        addRecommendation("Define one RR minimum rule (e.g. never below 1.5R) and apply it before entry, not after.");
+        addReviewCheck("Flag every trade where RR was below your stated minimum. Were those trades taken out of boredom, FOMO, or exception-making?");
+      }
+    }
+
+    const weekdayStats = new Map<number, { trades: number; wins: number; pnl: number }>();
+    for (const trade of closed) {
+      const openedAt = tradeOpenDateOrNull(trade);
+      if (!openedAt) continue;
+      const dayIndex = (openedAt.getUTCDay() + 6) % 7;
+      if (dayIndex < 0 || dayIndex > 4) continue;
+      const current = weekdayStats.get(dayIndex) || { trades: 0, wins: 0, pnl: 0 };
+      current.trades += 1;
+      if (trade.pnl > 0) current.wins += 1;
+      current.pnl += trade.pnl;
+      weekdayStats.set(dayIndex, current);
+    }
+    const weekdayCandidates = Array.from(weekdayStats.entries())
+      .filter(([, value]) => value.trades >= 3)
+      .map(([dayIndex, value]) => ({
+        dayIndex,
+        dayName: weekdayNames[dayIndex],
+        ...value,
+        winRate: (value.wins / value.trades) * 100,
+      }))
+      .filter((item): item is {
+        dayIndex: number;
+        dayName: typeof weekdayNames[number];
+        trades: number;
+        wins: number;
+        pnl: number;
+        winRate: number;
+      } => Boolean(item.dayName));
+    const worstDay = [...weekdayCandidates].sort((a, b) => a.winRate - b.winRate || a.pnl - b.pnl)[0];
+    if (worstDay && worstDay.winRate < 35) {
+      addInsight(
+        "strategy_performance",
+        `${worstDay.dayName} is your weakest trading day (${worstDay.trades} trades, ${worstDay.winRate.toFixed(1)}% win rate, ${worstDay.pnl.toFixed(2)} PnL). There may be a structural or psychological pattern tied to this day.`,
+      );
+      addRecommendation(`Paper trade or skip ${worstDay.dayName} for the next month and measure whether overall results improve.`);
+    }
+    const bestDay = [...weekdayCandidates].sort((a, b) => b.winRate - a.winRate || b.pnl - a.pnl)[0];
+    if (bestDay && bestDay.winRate > 65) {
+      addRecommendation(`${bestDay.dayName} is your strongest day. Protect that edge - do not skip it for non-trading reasons.`);
+    }
+
+    const winningDurations = closed
+      .filter((trade) => trade.pnl > 0 && isFiniteNumber(trade.trade_duration_minutes))
+      .map((trade) => trade.trade_duration_minutes as number);
+    const losingDurations = closed
+      .filter((trade) => trade.pnl < 0 && isFiniteNumber(trade.trade_duration_minutes))
+      .map((trade) => trade.trade_duration_minutes as number);
+    if (winningDurations.length >= 5 && losingDurations.length >= 5) {
+      const avgWinningHold = average(winningDurations);
+      const avgLosingHold = average(losingDurations);
+      if (avgWinningHold > 0 && avgLosingHold > avgWinningHold * 1.5) {
+        const longerPercent = ((avgLosingHold / avgWinningHold) - 1) * 100;
+        addInsight(
+          "psychology",
+          `Losing trades are held ${longerPercent.toFixed(0)}% longer than winning trades on average. This is the classic pattern of cutting winners early and holding losers in hope.`,
+        );
+        addRecommendation("Set a maximum hold time for losing trades equal to your average winner duration. If price has not moved in your favor by then, exit.");
+        addReviewCheck("For the last 5 losing trades: how long did you hold after the trade was clearly not working?");
+      }
+    }
+
+    let cumulativePnl = 0;
+    let lowestCumulativePnl = 0;
+    let drawdownLowEvents = 0;
+    let sizeIncreaseAfterLowEvents = 0;
+    for (let index = 0; index < closed.length; index++) {
+      const trade = closed[index];
+      if (!trade) continue;
+      cumulativePnl += trade.pnl;
+      if (cumulativePnl >= lowestCumulativePnl) continue;
+      lowestCumulativePnl = cumulativePnl;
+      const nextTrades = closed.slice(index + 1, index + 4);
+      if (!nextTrades.length || trade.lot_size <= 0) continue;
+      drawdownLowEvents += 1;
+      const avgNextLotSize = average(
+        nextTrades
+          .map((item) => item.lot_size)
+          .filter((value) => isFiniteNumber(value) && value > 0),
+      );
+      if (avgNextLotSize > trade.lot_size) {
+        sizeIncreaseAfterLowEvents += 1;
+      }
+    }
+    if (
+      drawdownLowEvents >= 3 &&
+      sizeIncreaseAfterLowEvents / drawdownLowEvents > 0.3
+    ) {
+      addInsight(
+        "psychology",
+        "After reaching new equity lows, position size tends to increase rather than decrease. This is a high-risk recovery pattern that deepens drawdowns instead of recovering them.",
+      );
+      addRecommendation("Hard rule: after a new equity low, the NEXT trade must be at 50% of your normal size. No exceptions. Recovery comes from quality, not size.");
+      addSessionPlan("After a new account low: reduce size by 50%, trade only A+ setups, and do not increase size until 3 consecutive wins at reduced size.");
+    }
+
     if (!insights.length) {
       addInsight(
         "strategy_performance",
@@ -884,268 +994,71 @@ export class AIAnalysisService {
     };
   }
 
-  private async callGrok(
-    apiKey: string,
+  private parseAIResponseContent(
+    content: string,
     dataset: Dataset,
-  ): Promise<{
+    modelUsed: string,
+  ): {
+    modelUsed: string;
+    model_used: string;
     mentorSummary: string;
     priorityFocus: string;
     insights: CoachingInsight[];
     recommendations: string[];
     sessionPlan: string[];
     reviewChecklist: string[];
-  }> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GROK_TIMEOUT_MS);
-
+  } {
+    let parsed: unknown;
     try {
-      const response = await fetch(GROK_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: GROK_MODEL,
-          temperature: 0.2,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "trading_mentor_response",
-              schema: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  mentorSummary: { type: "string" },
-                  priorityFocus: { type: "string" },
-                  insights: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      properties: {
-                        type: {
-                          type: "string",
-                          enum: [
-                            "trading_discipline",
-                            "risk_management",
-                            "psychology",
-                            "strategy_performance",
-                          ],
-                        },
-                        message: { type: "string" },
-                      },
-                      required: ["type", "message"],
-                    },
-                  },
-                  recommendations: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                  sessionPlan: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                  reviewChecklist: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                },
-                required: [
-                  "mentorSummary",
-                  "priorityFocus",
-                  "insights",
-                  "recommendations",
-                  "sessionPlan",
-                  "reviewChecklist",
-                ],
-              },
-            },
-          },
-          messages: [
-            {
-              role: "system",
-              content: "You are an elite trading mentor, performance coach, and risk manager. Be direct, evidence-based, and practical. Return only strict JSON.",
-            },
-            {
-              role: "user",
-              content: this.buildPrompt(dataset),
-            },
-          ],
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(`Grok API failed with status ${response.status}: ${message}`);
-      }
-
-      const payload = (await response.json()) as unknown;
-      if (!isRecord(payload) || !Array.isArray(payload.choices) || payload.choices.length === 0) {
-        throw new Error("Malformed Grok API response.");
-      }
-
-      const first = payload.choices[0];
-      if (!isRecord(first) || !isRecord(first.message)) {
-        throw new Error("Malformed Grok API message.");
-      }
-      const content = normalizeContent(first.message.content);
-      if (!content) {
-        throw new Error("Empty Grok API content.");
-      }
-
-      const parsed = JSON.parse(extractJson(content)) as unknown;
-      const validated = AIJsonSchema.safeParse(parsed);
-      if (!validated.success) {
-        throw new Error("Invalid Grok JSON schema.");
-      }
-
-      const insights = validated.data.insights
-        .map((item): CoachingInsight | null => {
-          const type = String(item.type || "").trim().toLowerCase();
-          const safeType: InsightType =
-            type === "trading_discipline" ||
-            type === "risk_management" ||
-            type === "psychology" ||
-            type === "strategy_performance"
-              ? (type as InsightType)
-              : "strategy_performance";
-          const message = item.message.trim();
-          if (!message) return null;
-          return { type: safeType, message };
-        })
-        .filter((item): item is CoachingInsight => Boolean(item));
-
-      const recommendations = dedupe(validated.data.recommendations);
-      const sessionPlan = dedupe(validated.data.sessionPlan);
-      const reviewChecklist = dedupe(validated.data.reviewChecklist);
-      if (!insights.length || !recommendations.length) {
-        return this.getAlgorithmicSuggestions(dataset);
-      }
-
-      return {
-        mentorSummary: validated.data.mentorSummary.trim(),
-        priorityFocus: validated.data.priorityFocus.trim(),
-        insights: insights.slice(0, 8),
-        recommendations: recommendations.slice(0, 8),
-        sessionPlan: sessionPlan.slice(0, 5),
-        reviewChecklist: reviewChecklist.slice(0, 5),
-      };
-    } finally {
-      clearTimeout(timeout);
+      parsed = JSON.parse(extractJson(content)) as unknown;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid OpenRouter JSON response: ${message}`);
     }
-  }
 
-  private async callGemini(
-    apiKey: string,
-    dataset: Dataset,
-  ): Promise<{
-    mentorSummary: string;
-    priorityFocus: string;
-    insights: CoachingInsight[];
-    recommendations: string[];
-    sessionPlan: string[];
-    reviewChecklist: string[];
-  }> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(
-        `${GEMINI_ENDPOINT}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts: [{ text: this.buildPrompt(dataset) }],
-              },
-            ],
-            systemInstruction: {
-              parts: [
-                {
-                  text: "You are an elite trading mentor, performance coach, and risk manager. Be direct, evidence-based, and practical. Return only strict JSON.",
-                },
-              ],
-            },
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: "application/json",
-            },
-          }),
-          signal: controller.signal,
-        },
-      );
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(`Gemini API failed with status ${response.status}: ${message}`);
-      }
-
-      const payload = (await response.json()) as unknown;
-      if (!isRecord(payload) || !Array.isArray(payload.candidates) || payload.candidates.length === 0) {
-        throw new Error("Malformed Gemini API response.");
-      }
-
-      const first = payload.candidates[0];
-      if (!isRecord(first) || !isRecord(first.content) || !Array.isArray(first.content.parts)) {
-        throw new Error("Malformed Gemini candidate.");
-      }
-
-      const textContent = first.content.parts
-        .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
-        .join("\n")
-        .trim();
-
-      if (!textContent) {
-        throw new Error("Empty Gemini API content.");
-      }
-
-      const parsed = JSON.parse(extractJson(textContent)) as unknown;
-      const validated = AIJsonSchema.safeParse(parsed);
-      if (!validated.success) {
-        throw new Error("Invalid Gemini JSON schema.");
-      }
-
-      const insights = validated.data.insights
-        .map((item): CoachingInsight | null => {
-          const type = String(item.type || "").trim().toLowerCase();
-          const safeType: InsightType =
-            type === "trading_discipline" ||
-            type === "risk_management" ||
-            type === "psychology" ||
-            type === "strategy_performance"
-              ? (type as InsightType)
-              : "strategy_performance";
-          const message = item.message.trim();
-          if (!message) return null;
-          return { type: safeType, message };
-        })
-        .filter((item): item is CoachingInsight => Boolean(item));
-
-      const recommendations = dedupe(validated.data.recommendations);
-      const sessionPlan = dedupe(validated.data.sessionPlan);
-      const reviewChecklist = dedupe(validated.data.reviewChecklist);
-      if (!insights.length || !recommendations.length) {
-        return this.getAlgorithmicSuggestions(dataset);
-      }
-
-      return {
-        mentorSummary: validated.data.mentorSummary.trim(),
-        priorityFocus: validated.data.priorityFocus.trim(),
-        insights: insights.slice(0, 8),
-        recommendations: recommendations.slice(0, 8),
-        sessionPlan: sessionPlan.slice(0, 5),
-        reviewChecklist: reviewChecklist.slice(0, 5),
-      };
-    } finally {
-      clearTimeout(timeout);
+    const validated = AIJsonSchema.safeParse(parsed);
+    if (!validated.success) {
+      throw new Error("Invalid OpenRouter JSON schema.");
     }
+
+    const insights = validated.data.insights
+      .map((item): CoachingInsight | null => {
+        const type = String(item.type || "").trim().toLowerCase();
+        const safeType: InsightType =
+          type === "trading_discipline" ||
+          type === "risk_management" ||
+          type === "psychology" ||
+          type === "strategy_performance"
+            ? (type as InsightType)
+            : "strategy_performance";
+        const message = item.message.trim();
+        if (!message) return null;
+        return { type: safeType, message };
+      })
+      .filter((item): item is CoachingInsight => Boolean(item));
+
+    const recommendations = dedupe(validated.data.recommendations);
+    const sessionPlan = dedupe(validated.data.sessionPlan);
+    const reviewChecklist = dedupe(validated.data.reviewChecklist);
+    if (!insights.length || !recommendations.length) {
+      const fallback = this.getAlgorithmicSuggestions(dataset);
+      return {
+        modelUsed,
+        model_used: modelUsed,
+        ...fallback,
+      };
+    }
+
+    return {
+      modelUsed,
+      model_used: modelUsed,
+      mentorSummary: validated.data.mentorSummary.trim(),
+      priorityFocus: validated.data.priorityFocus.trim(),
+      insights: insights.slice(0, 8),
+      recommendations: recommendations.slice(0, 8),
+      sessionPlan: sessionPlan.slice(0, 5),
+      reviewChecklist: reviewChecklist.slice(0, 5),
+    };
   }
 
   private buildPrompt(dataset: Dataset): string {
@@ -1479,6 +1392,7 @@ export class AIAnalysisService {
       if (validated.data.source !== provider) continue;
       return {
         ...validated.data,
+        model_used: validated.data.model_used ?? validated.data.modelUsed,
         fromCache: true,
       };
     }
@@ -1503,6 +1417,7 @@ export class AIAnalysisService {
         generatedAt: result.generatedAt,
         source: result.source,
         modelUsed: result.modelUsed,
+        model_used: result.model_used,
         fallbackUsed: result.fallbackUsed,
         mentorSummary: result.mentorSummary,
         priorityFocus: result.priorityFocus,
